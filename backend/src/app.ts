@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { checkDbConnection } from './config/db';
+import apiRouter from './routes';
 
 dotenv.config();
 
@@ -18,6 +19,9 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+
+// API Routes
+app.use('/api', apiRouter);
 
 // Health Check Route
 app.get('/api/health', async (_req: Request, res: Response) => {
