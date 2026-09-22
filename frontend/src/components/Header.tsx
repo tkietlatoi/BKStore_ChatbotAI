@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Search, ShoppingBag, Truck, Phone, Sparkles, X, Shield } from 'lucide-react';
 import { useCartStore } from '@/store/cartStore';
@@ -22,6 +22,18 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const totalItems = useCartStore((state) => state.getTotalItems());
+  const [isCartJumping, setIsCartJumping] = useState(false);
+  const prevItemsRef = useRef(totalItems);
+
+  useEffect(() => {
+    if (totalItems > prevItemsRef.current) {
+      setIsCartJumping(true);
+      const timer = setTimeout(() => setIsCartJumping(false), 550);
+      prevItemsRef.current = totalItems;
+      return () => clearTimeout(timer);
+    }
+    prevItemsRef.current = totalItems;
+  }, [totalItems]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,15 +138,23 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">Tra cứu đơn</span>
           </button>
 
-          {/* Cart Button */}
+          {/* Cart Button with Jumping Animation */}
           <button
             onClick={onOpenCart}
-            className="relative flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-sm shadow-blue-500/25 transition-all"
+            className={`relative flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-sm shadow-blue-500/25 transition-all ${
+              isCartJumping ? 'animate-cart-jump ring-4 ring-blue-400/40 shadow-blue-500/50' : ''
+            }`}
           >
-            <ShoppingBag className="w-4 h-4" />
+            <ShoppingBag className={`w-4 h-4 transition-transform ${isCartJumping ? 'scale-125 text-amber-300' : ''}`} />
             <span className="hidden sm:inline">Giỏ hàng</span>
             {totalItems > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 text-[11px] font-bold text-blue-700 bg-white rounded-full">
+              <span
+                className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1 text-[11px] font-bold rounded-full transition-all ${
+                  isCartJumping
+                    ? 'scale-125 bg-amber-300 text-slate-950 font-black'
+                    : 'bg-white text-blue-700'
+                }`}
+              >
                 {totalItems}
               </span>
             )}

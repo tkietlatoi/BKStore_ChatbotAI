@@ -1,6 +1,7 @@
 import { pool, checkDbConnection } from '../config/db';
-import { sampleOrders as fallbackOrders, products as fallbackProducts } from '../db/seedData';
+import { sampleOrders as fallbackOrders } from '../db/seedData';
 import { CreateOrderInput } from '../schemas/order.schema';
+import { findProductByIdOrSlug, deductStockInMemory } from './product.service';
 
 // In-memory store for newly created orders when running without DB
 const inMemoryOrders: any[] = [...fallbackOrders];
@@ -19,12 +20,17 @@ export const createOrder = async (input: CreateOrderInput) => {
     let totalAmount = 0;
     const itemsWithDetails: any[] = [];
 
+    // Step 1: Validate stock for all items first
     for (const item of input.items) {
-      const prod = fallbackProducts.find(
-        (p) => p.id === item.productId || p.slug === item.productId
-      );
+      const prod = findProductByIdOrSlug(item.productId);
       if (!prod) {
         throw new Error(`Sản phẩm với ID/Slug "${item.productId}" không tồn tại.`);
+      }
+      const availableStock = prod.stockQuantity !== undefined ? prod.stockQuantity : (prod.stock !== undefined ? prod.stock : 10);
+      if (item.quantity > availableStock) {
+        throw new Error(
+          `Sản phẩm "${prod.name}" chỉ còn ${availableStock} máy trong kho, không đủ số lượng bạn đặt (${item.quantity} máy).`
+        );
       }
       const itemTotal = prod.price * item.quantity;
       totalAmount += itemTotal;
@@ -34,6 +40,11 @@ export const createOrder = async (input: CreateOrderInput) => {
         quantity: item.quantity,
         unitPrice: prod.price,
       });
+    }
+
+    // Step 2: Deduct in-memory stock
+    for (const item of input.items) {
+      deductStockInMemory(item.productId, item.quantity);
     }
 
     const newOrder = {
@@ -64,9 +75,9 @@ export const createOrder = async (input: CreateOrderInput) => {
     const itemsToInsert: { productId: string; productName: string; quantity: number; unitPrice: number }[] = [];
 
     for (const item of input.items) {
-      // Find product by id or slug
+      // Find product by id or slug with row lock
       const pRes = await client.query(
-        'SELECT id, name, price, stock_quantity FROM products WHERE id::text = $1 OR slug = $1',
+        'SELECT id, name, price, stock_quantity FROM products WHERE id::text = $1 OR slug = $1 FOR UPDATE',
         [item.productId]
       );
       if (pRes.rows.length === 0) {
@@ -74,6 +85,13 @@ export const createOrder = async (input: CreateOrderInput) => {
       }
 
       const product = pRes.rows[0];
+      const availableStock = parseInt(product.stock_quantity ?? 0, 10);
+      if (item.quantity > availableStock) {
+        throw new Error(
+          `Sản phẩm "${product.name}" chỉ còn ${availableStock} máy trong kho, không đủ số lượng bạn đặt (${item.quantity} máy).`
+        );
+      }
+
       const unitPrice = parseFloat(product.price);
       calculatedTotal += unitPrice * item.quantity;
 
@@ -83,6 +101,14 @@ export const createOrder = async (input: CreateOrderInput) => {
         quantity: item.quantity,
         unitPrice,
       });
+    }
+
+    // Deduct stock for all items
+    for (const item of itemsToInsert) {
+      await client.query(
+        'UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2',
+        [item.quantity, item.productId]
+      );
     }
 
     const orderRes = await client.query(

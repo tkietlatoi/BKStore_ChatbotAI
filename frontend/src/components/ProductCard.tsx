@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ShoppingCart, Eye, Check, Sparkles } from 'lucide-react';
+import { ShoppingCart, Eye, Sparkles } from 'lucide-react';
 import { Product } from '@/types';
 import { formatPrice } from '@/lib/utils';
 import { useCartStore } from '@/store/cartStore';
@@ -17,14 +17,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onQuickView,
   onAskAI,
 }) => {
-  const [isAdded, setIsAdded] = useState(false);
+  const [isPopping, setIsPopping] = useState(false);
   const addItem = useCartStore((state) => state.addItem);
+
+  const stock = product.stock ?? product.stock_quantity ?? 0;
+  const isOutOfStock = stock <= 0;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isOutOfStock) return;
     addItem(product, 1);
-    setIsAdded(true);
-    setTimeout(() => setIsAdded(false), 1800);
+    setIsPopping(true);
+    setTimeout(() => setIsPopping(false), 700);
   };
 
   const discountPercent =
@@ -57,7 +61,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <img
           src={product.thumbnail}
           alt={product.name}
-          className="w-full h-full object-contain mix-blend-multiply group-hover:scale-108 transition-transform duration-500"
+          className={`w-full h-full object-contain mix-blend-multiply group-hover:scale-108 transition-transform duration-500 ${
+            isOutOfStock ? 'grayscale opacity-75' : ''
+          }`}
           loading="lazy"
         />
 
@@ -99,9 +105,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         {/* Status & Pricing & Actions */}
         <div className="pt-3 border-t border-slate-100 flex flex-col gap-2.5">
           {/* Status badge */}
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            <span>Chính hãng • Sẵn hàng giao ngay</span>
+          <div className="flex items-center gap-1.5 text-[11px] font-mono">
+            {isOutOfStock ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                <span className="text-rose-600 font-semibold">Tạm hết hàng</span>
+              </>
+            ) : stock <= 3 ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                <span className="text-amber-700 font-semibold">Chỉ còn {stock} máy</span>
+              </>
+            ) : (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span className="text-slate-500">Chính hãng • Sẵn hàng giao ngay</span>
+              </>
+            )}
           </div>
 
           {/* Price & Action Buttons */}
@@ -118,28 +138,31 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5">
-              {/* Nút Thêm vào giỏ */}
+              {/* Nút Thêm vào giỏ với hiệu ứng giỏ hàng nhảy nảy */}
               <button
                 type="button"
                 onClick={handleAddToCart}
-                disabled={isAdded}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs active:scale-95 ${
-                  isAdded
-                    ? 'bg-emerald-600 text-white'
+                disabled={isOutOfStock}
+                className={`relative px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs active:scale-90 ${
+                  isOutOfStock
+                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
+                    : isPopping
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/40 ring-2 ring-blue-400/50 scale-105'
                     : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-blue-500/20'
                 }`}
-                title="Thêm vào giỏ hàng"
+                title={isOutOfStock ? 'Sản phẩm tạm thời hết hàng' : 'Thêm vào giỏ hàng'}
               >
-                {isAdded ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Đã thêm</span>
-                  </>
-                ) : (
-                  <>
-                    <ShoppingCart className="w-3.5 h-3.5" />
-                    <span>Thêm</span>
-                  </>
+                <ShoppingCart
+                  className={`w-3.5 h-3.5 transition-transform ${
+                    isPopping ? 'animate-cart-jump text-amber-300 scale-125' : ''
+                  }`}
+                />
+                <span>{isOutOfStock ? 'Hết hàng' : 'Thêm'}</span>
+
+                {isPopping && (
+                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 pointer-events-none text-[10px] font-mono font-black bg-blue-600 text-white px-2 py-0.5 rounded-full shadow-lg border border-white/60 animate-float-up z-20 whitespace-nowrap">
+                    +1
+                  </span>
                 )}
               </button>
 

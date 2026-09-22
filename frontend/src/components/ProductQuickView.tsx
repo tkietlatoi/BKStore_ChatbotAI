@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, ShoppingBag, Check, Sparkles } from 'lucide-react';
+import { X, ShoppingBag, Sparkles, Package } from 'lucide-react';
 import { Product } from '@/types';
 import { formatPrice } from '@/lib/utils';
 import { useCartStore } from '@/store/cartStore';
@@ -21,21 +21,30 @@ export const ProductQuickView: React.FC<ProductQuickViewProps> = ({
 }) => {
   const [selectedImg, setSelectedImg] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
-  const [isAdded, setIsAdded] = useState(false);
+  const [isPopping, setIsPopping] = useState(false);
+
   const addItem = useCartStore((state) => state.addItem);
+  const cartQty = useCartStore((state) => (product ? state.getItemQuantity(product.id) : 0));
 
   if (!product) return null;
 
   const currentImage = selectedImg || product.thumbnail;
   const images = product.images && product.images.length > 0 ? product.images : [product.thumbnail];
 
+  const stock = product.stock ?? product.stock_quantity ?? 0;
+  const isOutOfStock = stock <= 0;
+  const availableToAdd = Math.max(0, stock - cartQty);
+  const isReachedMaxInCart = cartQty >= stock && stock > 0;
+
   const handleAddToCart = () => {
+    if (isOutOfStock || isReachedMaxInCart) return;
     addItem(product, quantity);
-    setIsAdded(true);
-    setTimeout(() => setIsAdded(false), 1500);
+    setIsPopping(true);
+    setTimeout(() => setIsPopping(false), 700);
   };
 
   const handleBuyNow = () => {
+    if (isOutOfStock) return;
     addItem(product, quantity);
     onBuyNow(product, quantity);
   };
@@ -59,7 +68,9 @@ export const ProductQuickView: React.FC<ProductQuickViewProps> = ({
               <img
                 src={currentImage}
                 alt={product.name}
-                className="w-full h-full object-contain mix-blend-multiply"
+                className={`w-full h-full object-contain mix-blend-multiply ${
+                  isOutOfStock ? 'grayscale opacity-75' : ''
+                }`}
               />
             </div>
 
@@ -104,16 +115,35 @@ export const ProductQuickView: React.FC<ProductQuickViewProps> = ({
                 {product.name}
               </h2>
 
-              {/* Price */}
-              <div className="flex items-baseline gap-3 my-3">
-                <span className="text-2xl font-extrabold text-blue-700 font-mono">
-                  {formatPrice(product.price)}
-                </span>
-                {product.originalPrice && product.originalPrice > product.price && (
-                  <span className="text-sm text-slate-400 line-through font-mono">
-                    {formatPrice(product.originalPrice)}
+              {/* Price & Stock status */}
+              <div className="flex items-center justify-between my-3 flex-wrap gap-2">
+                <div className="flex items-baseline gap-3">
+                  <span className="text-2xl font-extrabold text-blue-700 font-mono">
+                    {formatPrice(product.price)}
                   </span>
-                )}
+                  {product.originalPrice && product.originalPrice > product.price && (
+                    <span className="text-sm text-slate-400 line-through font-mono">
+                      {formatPrice(product.originalPrice)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Stock badge */}
+                <div className="flex items-center gap-1.5 text-xs font-mono">
+                  {isOutOfStock ? (
+                    <span className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-700 font-bold">
+                      Tạm hết hàng
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Kho: <strong>{stock}</strong> máy</span>
+                      {cartQty > 0 && (
+                        <span className="text-blue-600 font-semibold">({cartQty} trong giỏ)</span>
+                      )}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Description */}
@@ -140,52 +170,78 @@ export const ProductQuickView: React.FC<ProductQuickViewProps> = ({
 
             {/* Bottom Actions: Quantity + Add to Cart & Buy Now */}
             <div className="pt-4 border-t border-slate-200 flex flex-col gap-3">
-              <div className="flex items-center gap-4">
-                <span className="text-xs font-semibold text-slate-700">Số lượng:</span>
-                <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-slate-50">
-                  <button
-                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="px-3 py-1 text-slate-600 hover:bg-slate-200 font-bold"
-                  >
-                    -
-                  </button>
-                  <span className="px-3 py-1 font-mono text-sm font-semibold text-slate-800 min-w-[36px] text-center">
-                    {quantity}
-                  </span>
-                  <button
-                    onClick={() => setQuantity(quantity + 1)}
-                    className="px-3 py-1 text-slate-600 hover:bg-slate-200 font-bold"
-                  >
-                    +
-                  </button>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-slate-700">Số lượng:</span>
+                  <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-slate-50">
+                    <button
+                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                      disabled={quantity <= 1 || isOutOfStock}
+                      className="px-3 py-1 text-slate-600 hover:bg-slate-200 font-bold disabled:opacity-40 disabled:hover:bg-slate-50"
+                    >
+                      -
+                    </button>
+                    <span className="px-3 py-1 font-mono text-sm font-semibold text-slate-800 min-w-[36px] text-center">
+                      {quantity}
+                    </span>
+                    <button
+                      onClick={() => setQuantity(quantity + 1)}
+                      disabled={quantity >= availableToAdd || isOutOfStock}
+                      className="px-3 py-1 text-slate-600 hover:bg-slate-200 font-bold disabled:opacity-40 disabled:hover:bg-slate-50"
+                      title={quantity >= availableToAdd ? 'Đã đạt giới hạn số lượng còn lại' : 'Tăng số lượng'}
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
+
+                {availableToAdd > 0 && availableToAdd <= 3 && (
+                  <span className="text-[11px] text-amber-700 font-mono font-medium">
+                    (Có thể thêm tối đa {availableToAdd} máy)
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={handleAddToCart}
-                  className={`py-3 px-4 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all ${
-                    isAdded
-                      ? 'bg-emerald-600 text-white'
+                  disabled={isOutOfStock || isReachedMaxInCart}
+                  className={`relative py-3 px-4 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                    isOutOfStock || isReachedMaxInCart
+                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                      : isPopping
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 ring-2 ring-blue-400/50 scale-[1.02]'
                       : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
                   }`}
                 >
-                  {isAdded ? (
-                    <>
-                      <Check className="w-4 h-4" />
-                      <span>Đã thêm vào giỏ</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShoppingBag className="w-4 h-4" />
-                      <span>Thêm vào giỏ</span>
-                    </>
+                  <ShoppingBag
+                    className={`w-4 h-4 transition-transform ${
+                      isPopping ? 'animate-cart-jump text-amber-300 scale-125' : ''
+                    }`}
+                  />
+                  <span>
+                    {isOutOfStock
+                      ? 'Hết hàng'
+                      : isReachedMaxInCart
+                      ? 'Đã đạt tối đa'
+                      : 'Thêm vào giỏ'}
+                  </span>
+
+                  {isPopping && (
+                    <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 pointer-events-none text-xs font-mono font-black bg-blue-600 text-white px-2.5 py-0.5 rounded-full shadow-lg border border-white/60 animate-float-up z-20 whitespace-nowrap">
+                      +{quantity}
+                    </span>
                   )}
                 </button>
 
                 <button
                   onClick={handleBuyNow}
-                  className="py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm shadow-md shadow-blue-500/20 transition-all text-center"
+                  disabled={isOutOfStock}
+                  className={`py-3 px-4 rounded-xl font-semibold text-sm shadow-md transition-all text-center ${
+                    isOutOfStock
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                      : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-blue-500/20'
+                  }`}
                 >
                   Mua ngay
                 </button>

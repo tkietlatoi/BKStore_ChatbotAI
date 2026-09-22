@@ -274,6 +274,78 @@ const tests: TestCase[] = [
       }
     },
   },
+  {
+    name: '14. Over-stock Order Rejection (/api/orders with excessive quantity)',
+    run: async () => {
+      // Order with 9999 items, which must exceed available stock
+      const overStockPayload = {
+        customerName: 'Khách hàng Test Tồn kho',
+        phone: '0912345678',
+        address: 'Hà Nội',
+        paymentMethod: 'COD',
+        items: [
+          {
+            productId: 'macbook-air-m3-13-16gb-512gb',
+            quantity: 9999,
+          },
+        ],
+      };
+
+      const res = await fetch(`${BASE_URL}/api/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(overStockPayload),
+      });
+
+      if (res.status !== 400) {
+        throw new Error(`Expected status 400 for over-stock order, got ${res.status}`);
+      }
+      const body = (await res.json()) as any;
+      if (!body.error || !body.error.includes('không đủ số lượng')) {
+        throw new Error(`Expected stock shortage error message, got: ${body.error}`);
+      }
+    },
+  },
+  {
+    name: '15. Stock Deduction on Order Placement (/api/orders)',
+    run: async () => {
+      // 1. Check stock before ordering
+      const getProdRes = await fetch(`${BASE_URL}/api/products/sony-wh-1000xm5-black`);
+      const getProdBody = (await getProdRes.json()) as any;
+      const initialStock = getProdBody.data?.stockQuantity ?? getProdBody.data?.stock ?? 0;
+
+      // 2. Place order with quantity: 2
+      const orderPayload = {
+        customerName: 'Kiểm tra trừ tồn kho',
+        phone: '0987654321',
+        address: 'Hồ Chí Minh',
+        paymentMethod: 'COD',
+        items: [
+          {
+            productId: 'sony-wh-1000xm5-black',
+            quantity: 2,
+          },
+        ],
+      };
+
+      const orderRes = await fetch(`${BASE_URL}/api/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPayload),
+      });
+
+      if (orderRes.status !== 201) throw new Error(`Order failed with status ${orderRes.status}`);
+
+      // 3. Check stock after ordering
+      const checkRes = await fetch(`${BASE_URL}/api/products/sony-wh-1000xm5-black`);
+      const checkBody = (await checkRes.json()) as any;
+      const finalStock = checkBody.data?.stockQuantity ?? checkBody.data?.stock ?? 0;
+
+      if (finalStock !== initialStock - 2) {
+        throw new Error(`Stock deduction failed: expected ${initialStock - 2}, got ${finalStock}`);
+      }
+    },
+  },
 ];
 
 const runAllTests = async () => {

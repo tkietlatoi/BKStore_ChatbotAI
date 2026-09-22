@@ -61,6 +61,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       return;
     }
 
+    // Client-side inventory validation
+    for (const item of items) {
+      const maxStock = item.product.stock ?? item.product.stock_quantity ?? 0;
+      if (maxStock <= 0) {
+        setErrorMsg(`Sản phẩm "${item.product.name}" hiện đã hết hàng trong kho. Vui lòng quay lại giỏ hàng để gỡ bỏ.`);
+        return;
+      }
+      if (item.quantity > maxStock) {
+        setErrorMsg(
+          `Sản phẩm "${item.product.name}" chỉ còn ${maxStock} máy trong kho (bạn đang chọn ${item.quantity} máy). Vui lòng điều chỉnh lại số lượng.`
+        );
+        return;
+      }
+    }
+
     setIsLoading(true);
 
     try {

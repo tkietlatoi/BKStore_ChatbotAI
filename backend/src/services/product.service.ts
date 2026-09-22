@@ -15,7 +15,25 @@ export interface ProductFilterOptions {
 }
 
 // In-memory store for fallback mode when database is not connected
-let inMemoryProducts: any[] = [...fallbackProducts];
+let inMemoryProducts: any[] = fallbackProducts.map((p) => ({
+  ...p,
+  stockQuantity: (p as any).stockQuantity ?? (p as any).stock ?? 15,
+  stock: (p as any).stockQuantity ?? (p as any).stock ?? 15,
+}));
+
+export const findProductByIdOrSlug = (idOrSlug: string) => {
+  return inMemoryProducts.find((p) => p.id === idOrSlug || p.slug === idOrSlug) || null;
+};
+
+export const deductStockInMemory = (productId: string, quantity: number): boolean => {
+  const prod = inMemoryProducts.find((p) => p.id === productId || p.slug === productId);
+  if (!prod) return false;
+  const currentStock = prod.stockQuantity ?? prod.stock ?? 10;
+  if (currentStock < quantity) return false;
+  prod.stockQuantity = currentStock - quantity;
+  prod.stock = prod.stockQuantity;
+  return true;
+};
 
 export function slugify(str: string): string {
   return str
