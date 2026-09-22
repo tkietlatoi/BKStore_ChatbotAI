@@ -15,7 +15,8 @@
     "db:logs": "docker compose logs -f postgres",
     "db:migrate": "npm run db:migrate --prefix backend",
     "db:seed": "npm run db:seed --prefix backend",
-    "db:setup": "npm run db:setup --prefix backend"
+    "db:setup": "npm run db:setup --prefix backend",
+    "test:api": "npm run test:api --prefix backend"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -39,3 +39,9 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# AI assistant files
+AGENTS.md
+CLAUDE.md
+**/AGENTS.md
+**/CLAUDE.md
