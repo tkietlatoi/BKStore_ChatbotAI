@@ -127,6 +127,88 @@ export const createOrder = async (input: CreateOrderInput) => {
   }
 };
 
+export interface OrderFilterOptions {
+  status?: string;
+  page?: number;
+  limit?: number;
+}
+
+export const getAllOrders = async (options: OrderFilterOptions = {}) => {
+  const page = Math.max(1, Number(options.page) || 1);
+  const limit = Math.max(1, Math.min(100, Number(options.limit) || 20));
+  const offset = (page - 1) * limit;
+
+  const isDbConnected = await checkDbConnection();
+  if (!isDbConnected) {
+    let filtered = [...inMemoryOrders];
+    if (options.status && options.status !== 'all') {
+      filtered = filtered.filter((o) => o.status.toLowerCase() === options.status?.toLowerCase());
+    }
+    const total = filtered.length;
+    const paginated = filtered.slice(offset, offset + limit);
+    return {
+      orders: paginated,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIdx = 1;
+
+  if (options.status && options.status !== 'all') {
+    conditions.push(`o.status = $${paramIdx++}`);
+    params.push(options.status);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countQuery = `SELECT COUNT(o.id)::int as total FROM orders o ${whereClause}`;
+  const countRes = await pool.query(countQuery, params);
+  const total = countRes.rows[0].total;
+
+  const dataQuery = `
+    SELECT 
+      o.id, o.order_code as "orderCode", o.customer_name as "customerName",
+      o.phone, o.address, o.note, o.total_amount as "totalAmount",
+      o.payment_method as "paymentMethod", o.status, o.tracking_info as "trackingInfo",
+      o.created_at as "createdAt",
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'productId', oi.product_id,
+            'productName', oi.product_name,
+            'quantity', oi.quantity,
+            'unitPrice', oi.unit_price
+          )
+        ) FILTER (WHERE oi.id IS NOT NULL), '[]'::json
+      ) as items
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    ${whereClause}
+    GROUP BY o.id
+    ORDER BY o.created_at DESC
+    LIMIT $${paramIdx++} OFFSET $${paramIdx++}
+  `;
+  params.push(limit, offset);
+
+  const dataRes = await pool.query(dataQuery, params);
+  return {
+    orders: dataRes.rows,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    },
+  };
+};
+
 export const getOrderByCodeAndPhone = async (orderCode: string, phone: string) => {
   // Normalize order code (ensure leading # if missing)
   const normalizedCode = orderCode.startsWith('#') ? orderCode : `#${orderCode}`;

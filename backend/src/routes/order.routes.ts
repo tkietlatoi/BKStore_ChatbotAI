@@ -5,6 +5,7 @@ import { createOrderSchema, updateOrderStatusSchema } from '../schemas/order.sch
 
 const router = Router();
 
+router.get('/', orderController.getOrders);
 router.post('/', validateBody(createOrderSchema), orderController.createOrder);
 router.get('/:orderCode', orderController.getOrder);
 router.patch('/:orderCode/status', validateBody(updateOrderStatusSchema), orderController.updateOrderStatus);

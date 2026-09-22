@@ -53,3 +53,70 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
     });
   }
 };
+
+export const createProduct = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const newProduct = await productService.createProduct(req.body);
+    res.status(201).json({
+      success: true,
+      data: newProduct,
+      message: 'Tạo sản phẩm mới thành công',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi tạo sản phẩm mới',
+    });
+  }
+};
+
+export const updateProduct = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const updated = await productService.updateProduct(id, req.body);
+
+    if (!updated) {
+      res.status(404).json({
+        success: false,
+        error: `Không tìm thấy sản phẩm với ID hoặc mã "${id}"`,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: updated,
+      message: 'Cập nhật sản phẩm thành công',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi cập nhật sản phẩm',
+    });
+  }
+};
+
+export const deleteProduct = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const deleted = await productService.deleteProduct(id);
+
+    if (!deleted) {
+      res.status(404).json({
+        success: false,
+        error: `Không tìm thấy sản phẩm với ID hoặc mã "${id}" để xóa`,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Xóa sản phẩm thành công',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi xóa sản phẩm',
+    });
+  }
+};

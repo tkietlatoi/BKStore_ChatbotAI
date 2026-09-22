@@ -1,5 +1,7 @@
+import crypto from 'crypto';
 import { pool, checkDbConnection } from '../config/db';
 import { products as fallbackProducts, branches as fallbackBranches } from '../db/seedData';
+import { CreateProductInput, UpdateProductInput } from '../schemas/product.schema';
 
 export interface ProductFilterOptions {
   category?: string;
@@ -12,6 +14,21 @@ export interface ProductFilterOptions {
   limit?: number;
 }
 
+// In-memory store for fallback mode when database is not connected
+let inMemoryProducts: any[] = [...fallbackProducts];
+
+export function slugify(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
 export const getProducts = async (options: ProductFilterOptions) => {
   const page = Math.max(1, Number(options.page) || 1);
   const limit = Math.max(1, Math.min(50, Number(options.limit) || 12));
@@ -20,13 +37,17 @@ export const getProducts = async (options: ProductFilterOptions) => {
   const isDbConnected = await checkDbConnection();
   if (!isDbConnected) {
     // In-memory fallback
-    let filtered = [...fallbackProducts];
+    let filtered = [...inMemoryProducts];
 
     if (options.category) {
-      filtered = filtered.filter((p) => p.categorySlug.toLowerCase() === options.category?.toLowerCase());
+      filtered = filtered.filter(
+        (p) => p.categorySlug?.toLowerCase() === options.category?.toLowerCase()
+      );
     }
     if (options.brand) {
-      filtered = filtered.filter((p) => p.brand.toLowerCase() === options.brand?.toLowerCase());
+      filtered = filtered.filter(
+        (p) => p.brand?.toLowerCase() === options.brand?.toLowerCase()
+      );
     }
     if (options.minPrice !== undefined) {
       filtered = filtered.filter((p) => p.price >= (options.minPrice || 0));
@@ -41,7 +62,7 @@ export const getProducts = async (options: ProductFilterOptions) => {
           p.name.toLowerCase().includes(q) ||
           p.brand.toLowerCase().includes(q) ||
           p.description.toLowerCase().includes(q) ||
-          JSON.stringify(p.specs).toLowerCase().includes(q)
+          JSON.stringify(p.specs || {}).toLowerCase().includes(q)
       );
     }
 
@@ -147,7 +168,7 @@ export const getProducts = async (options: ProductFilterOptions) => {
 export const getProductBySlug = async (slug: string) => {
   const isDbConnected = await checkDbConnection();
   if (!isDbConnected) {
-    const prod = fallbackProducts.find((p) => p.slug === slug);
+    const prod = inMemoryProducts.find((p) => p.slug === slug || p.id === slug);
     if (!prod) return null;
 
     // Attach mock branch inventories
@@ -186,10 +207,214 @@ export const getProductBySlug = async (slug: string) => {
     LEFT JOIN categories c ON p.category_id = c.id
     LEFT JOIN inventories inv ON inv.product_id = p.id
     LEFT JOIN branches b ON inv.branch_id = b.id
-    WHERE p.slug = $1
+    WHERE p.slug = $1 OR p.id::text = $1
     GROUP BY p.id, c.name, c.slug
   `;
 
   const res = await pool.query(query, [slug]);
   return res.rows[0] || null;
+};
+
+export const createProduct = async (input: CreateProductInput) => {
+  const isDbConnected = await checkDbConnection();
+  const baseSlug = input.slug?.trim() ? slugify(input.slug) : slugify(input.name);
+
+  if (!isDbConnected) {
+    let finalSlug = baseSlug;
+    if (inMemoryProducts.some((p) => p.slug === finalSlug)) {
+      finalSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
+    }
+
+    const categoryMap: Record<string, string> = {
+      laptop: 'Laptop & Máy tính xách tay',
+      smartphone: 'Điện thoại thông minh',
+      accessory: 'Phụ kiện & Ngoại vi',
+    };
+
+    const newProduct: any = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}`,
+      categorySlug: input.categorySlug,
+      categoryName: categoryMap[input.categorySlug] || input.categorySlug,
+      name: input.name,
+      slug: finalSlug,
+      brand: input.brand,
+      price: input.price,
+      originalPrice: input.originalPrice || input.price,
+      stockQuantity: input.stockQuantity ?? 10,
+      stock: input.stockQuantity ?? 10,
+      thumbnail: input.thumbnail,
+      images: input.images && input.images.length > 0 ? input.images : [input.thumbnail],
+      specs: input.specs || {},
+      description: input.description,
+      warrantyMonths: input.warrantyMonths ?? 12,
+      createdAt: new Date().toISOString(),
+    };
+
+    inMemoryProducts.unshift(newProduct);
+    return newProduct;
+  }
+
+  // PostgreSQL logic
+  let finalSlug = baseSlug;
+  const existingRes = await pool.query('SELECT id FROM products WHERE slug = $1', [finalSlug]);
+  if (existingRes.rows.length > 0) {
+    finalSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
+  }
+
+  let categoryId: string | null = null;
+  const catRes = await pool.query('SELECT id FROM categories WHERE slug = $1 LIMIT 1', [input.categorySlug]);
+  if (catRes.rows.length > 0) {
+    categoryId = catRes.rows[0].id;
+  }
+
+  const query = `
+    INSERT INTO products (
+      name, slug, category_id, brand, price, original_price,
+      stock_quantity, thumbnail, images, specs, description, warranty_months
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    RETURNING 
+      id, name, slug, brand, price, original_price, stock_quantity,
+      thumbnail, images, specs, description, warranty_months, created_at
+  `;
+  const values = [
+    input.name,
+    finalSlug,
+    categoryId,
+    input.brand,
+    input.price,
+    input.originalPrice || input.price,
+    input.stockQuantity ?? 10,
+    input.thumbnail,
+    JSON.stringify(input.images && input.images.length > 0 ? input.images : [input.thumbnail]),
+    JSON.stringify(input.specs || {}),
+    input.description,
+    input.warrantyMonths ?? 12,
+  ];
+
+  const res = await pool.query(query, values);
+  return {
+    ...res.rows[0],
+    categorySlug: input.categorySlug,
+  };
+};
+
+export const updateProduct = async (id: string, input: UpdateProductInput) => {
+  const isDbConnected = await checkDbConnection();
+
+  if (!isDbConnected) {
+    const idx = inMemoryProducts.findIndex((p) => p.id === id || p.slug === id);
+    if (idx === -1) return null;
+
+    const existing = inMemoryProducts[idx];
+    const categoryMap: Record<string, string> = {
+      laptop: 'Laptop & Máy tính xách tay',
+      smartphone: 'Điện thoại thông minh',
+      accessory: 'Phụ kiện & Ngoại vi',
+    };
+
+    const updated: any = {
+      ...existing,
+      ...input,
+      categoryName: input.categorySlug ? (categoryMap[input.categorySlug] || input.categorySlug) : existing.categoryName,
+      originalPrice: input.originalPrice ?? existing.originalPrice,
+      stockQuantity: input.stockQuantity ?? (existing.stockQuantity ?? existing.stock ?? 10),
+      stock: input.stockQuantity ?? (existing.stockQuantity ?? existing.stock ?? 10),
+      specs: input.specs !== undefined ? input.specs : existing.specs,
+      images: input.images !== undefined ? input.images : existing.images,
+      updatedAt: new Date().toISOString(),
+    };
+
+    inMemoryProducts[idx] = updated;
+    return updated;
+  }
+
+  // PostgreSQL logic
+  const checkRes = await pool.query('SELECT * FROM products WHERE id::text = $1 OR slug = $1', [id]);
+  if (checkRes.rows.length === 0) {
+    return null;
+  }
+  const prodId = checkRes.rows[0].id;
+
+  const updates: string[] = [];
+  const values: any[] = [];
+  let paramIdx = 1;
+
+  if (input.name !== undefined) {
+    updates.push(`name = $${paramIdx++}`);
+    values.push(input.name);
+  }
+  if (input.slug !== undefined) {
+    updates.push(`slug = $${paramIdx++}`);
+    values.push(slugify(input.slug));
+  }
+  if (input.brand !== undefined) {
+    updates.push(`brand = $${paramIdx++}`);
+    values.push(input.brand);
+  }
+  if (input.price !== undefined) {
+    updates.push(`price = $${paramIdx++}`);
+    values.push(input.price);
+  }
+  if (input.originalPrice !== undefined) {
+    updates.push(`original_price = $${paramIdx++}`);
+    values.push(input.originalPrice);
+  }
+  if (input.stockQuantity !== undefined) {
+    updates.push(`stock_quantity = $${paramIdx++}`);
+    values.push(input.stockQuantity);
+  }
+  if (input.thumbnail !== undefined) {
+    updates.push(`thumbnail = $${paramIdx++}`);
+    values.push(input.thumbnail);
+  }
+  if (input.images !== undefined) {
+    updates.push(`images = $${paramIdx++}`);
+    values.push(JSON.stringify(input.images));
+  }
+  if (input.specs !== undefined) {
+    updates.push(`specs = $${paramIdx++}`);
+    values.push(JSON.stringify(input.specs));
+  }
+  if (input.description !== undefined) {
+    updates.push(`description = $${paramIdx++}`);
+    values.push(input.description);
+  }
+  if (input.warrantyMonths !== undefined) {
+    updates.push(`warranty_months = $${paramIdx++}`);
+    values.push(input.warrantyMonths);
+  }
+  if (input.categorySlug !== undefined) {
+    const catRes = await pool.query('SELECT id FROM categories WHERE slug = $1 LIMIT 1', [input.categorySlug]);
+    if (catRes.rows.length > 0) {
+      updates.push(`category_id = $${paramIdx++}`);
+      values.push(catRes.rows[0].id);
+    }
+  }
+
+  updates.push(`updated_at = NOW()`);
+
+  values.push(prodId);
+  const query = `
+    UPDATE products
+    SET ${updates.join(', ')}
+    WHERE id = $${paramIdx}
+    RETURNING 
+      id, name, slug, brand, price, original_price, stock_quantity,
+      thumbnail, images, specs, description, warranty_months, updated_at
+  `;
+  const res = await pool.query(query, values);
+  return res.rows[0];
+};
+
+export const deleteProduct = async (id: string): Promise<boolean> => {
+  const isDbConnected = await checkDbConnection();
+
+  if (!isDbConnected) {
+    const initialLen = inMemoryProducts.length;
+    inMemoryProducts = inMemoryProducts.filter((p) => p.id !== id && p.slug !== id);
+    return inMemoryProducts.length < initialLen;
+  }
+
+  const res = await pool.query('DELETE FROM products WHERE id::text = $1 OR slug = $1 RETURNING id', [id]);
+  return (res.rowCount ?? 0) > 0;
 };

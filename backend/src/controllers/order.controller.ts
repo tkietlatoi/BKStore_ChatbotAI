@@ -1,6 +1,28 @@
 import { Request, Response } from 'express';
 import * as orderService from '../services/order.service';
 
+export const getOrders = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { status, page, limit } = req.query;
+    const result = await orderService.getAllOrders({
+      status: status as string,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+
+    res.json({
+      success: true,
+      data: result.orders,
+      pagination: result.pagination,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi khi lấy danh sách đơn hàng',
+    });
+  }
+};
+
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
   try {
     const order = await orderService.createOrder(req.body);

@@ -1,4 +1,4 @@
-import { ApiResponse, Branch, BranchInventory, Category, CreateOrderPayload, Order, Product } from '@/types';
+import { ApiResponse, Branch, BranchInventory, Category, CreateOrderPayload, Order, OrderStatus, Product } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -423,6 +423,131 @@ export async function fetchProductBySlug(slug: string): Promise<Product | null> 
   return found || null;
 }
 
+export async function createProductApi(payload: Partial<Product>): Promise<ApiResponse<Product>> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: payload.name,
+        slug: payload.slug,
+        categorySlug: payload.categorySlug,
+        brand: payload.brand,
+        price: Number(payload.price),
+        originalPrice: payload.originalPrice ? Number(payload.originalPrice) : undefined,
+        stockQuantity: Number(payload.stock ?? 10),
+        thumbnail: payload.thumbnail,
+        images: payload.images && payload.images.length > 0 ? payload.images : [payload.thumbnail],
+        specs: payload.specs || {},
+        description: payload.description,
+        warrantyMonths: Number(payload.warrantyMonths ?? 12),
+      }),
+    });
+    const json = await res.json();
+    if (json.success && json.data) {
+      json.data = normalizeProduct(json.data);
+    }
+    return json;
+  } catch (error: unknown) {
+    console.warn('[API] createProductApi fallback mock:', error);
+    const mockProduct: Product = {
+      id: `p-${Date.now()}`,
+      name: payload.name || 'Sản phẩm mới',
+      slug: payload.slug || `san-pham-${Date.now()}`,
+      categorySlug: payload.categorySlug || 'laptop',
+      categoryName: payload.categoryName || (payload.categorySlug === 'laptop' ? 'Laptop & Máy tính xách tay' : payload.categorySlug === 'smartphone' ? 'Điện thoại thông minh' : 'Phụ kiện & Ngoại vi'),
+      brand: payload.brand || 'BK-Store',
+      price: Number(payload.price || 0),
+      originalPrice: Number(payload.originalPrice || payload.price || 0),
+      stock: Number(payload.stock ?? 10),
+      thumbnail: payload.thumbnail || 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=800&q=80',
+      images: payload.images || [payload.thumbnail || 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=800&q=80'],
+      specs: payload.specs || {},
+      description: payload.description || '',
+      warrantyMonths: Number(payload.warrantyMonths ?? 12),
+    };
+    FALLBACK_PRODUCTS.unshift(mockProduct);
+    return {
+      success: true,
+      data: mockProduct,
+      message: 'Tạo sản phẩm thành công (Chế độ mô phỏng offline)!',
+    };
+  }
+}
+
+export async function updateProductApi(id: string, payload: Partial<Product>): Promise<ApiResponse<Product>> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/products/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: payload.name,
+        slug: payload.slug,
+        categorySlug: payload.categorySlug,
+        brand: payload.brand,
+        price: payload.price !== undefined ? Number(payload.price) : undefined,
+        originalPrice: payload.originalPrice !== undefined ? Number(payload.originalPrice) : undefined,
+        stockQuantity: payload.stock !== undefined ? Number(payload.stock) : undefined,
+        thumbnail: payload.thumbnail,
+        images: payload.images,
+        specs: payload.specs,
+        description: payload.description,
+        warrantyMonths: payload.warrantyMonths !== undefined ? Number(payload.warrantyMonths) : undefined,
+      }),
+    });
+    const json = await res.json();
+    if (json.success && json.data) {
+      json.data = normalizeProduct(json.data);
+    }
+    return json;
+  } catch (error: unknown) {
+    console.warn('[API] updateProductApi fallback mock:', error);
+    const idx = FALLBACK_PRODUCTS.findIndex((p) => p.id === id || p.slug === id);
+    if (idx !== -1) {
+      FALLBACK_PRODUCTS[idx] = {
+        ...FALLBACK_PRODUCTS[idx],
+        ...payload,
+        price: payload.price !== undefined ? Number(payload.price) : FALLBACK_PRODUCTS[idx].price,
+        originalPrice: payload.originalPrice !== undefined ? Number(payload.originalPrice) : FALLBACK_PRODUCTS[idx].originalPrice,
+        stock: payload.stock !== undefined ? Number(payload.stock) : FALLBACK_PRODUCTS[idx].stock,
+      };
+      return {
+        success: true,
+        data: FALLBACK_PRODUCTS[idx],
+        message: 'Cập nhật sản phẩm thành công (Chế độ mô phỏng offline)!',
+      };
+    }
+    return {
+      success: false,
+      error: 'Không tìm thấy sản phẩm để cập nhật.',
+    };
+  }
+}
+
+export async function deleteProductApi(id: string): Promise<ApiResponse<void>> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/products/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    const json = await res.json();
+    return json;
+  } catch (error: unknown) {
+    console.warn('[API] deleteProductApi fallback mock:', error);
+    const idx = FALLBACK_PRODUCTS.findIndex((p) => p.id === id || p.slug === id);
+    if (idx !== -1) {
+      FALLBACK_PRODUCTS.splice(idx, 1);
+      return {
+        success: true,
+        message: 'Đã xóa sản phẩm thành công (Chế độ mô phỏng offline)!',
+      };
+    }
+    return {
+      success: false,
+      error: 'Không tìm thấy sản phẩm để xóa.',
+    };
+  }
+}
+
 export async function createOrderApi(payload: CreateOrderPayload): Promise<ApiResponse<Order>> {
   try {
     const res = await fetch(`${API_BASE_URL}/orders`, {
@@ -473,3 +598,186 @@ export async function trackOrderApi(orderCode: string, phone: string): Promise<A
     };
   }
 }
+
+// Fallback seed orders for Admin
+export const FALLBACK_ORDERS: Order[] = [
+  {
+    id: 'ord-1024',
+    orderCode: '#BK-1024',
+    customerName: 'Nguyễn Quế Bắc',
+    phone: '0912345678',
+    address: '144 Xuân Thủy, Cầu Giấy, Hà Nội',
+    note: 'Giao giờ hành chính, gọi trước khi đến 15 phút.',
+    totalAmount: 89990000,
+    paymentMethod: 'QR_PAY',
+    status: 'shipping',
+    trackingInfo: 'Đang vận chuyển: Đã xuất kho tổng và bàn giao bưu tá.',
+    createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
+    items: [
+      {
+        productId: 'p1000000-0000-0000-0000-000000000001',
+        productName: 'MacBook Pro 16 inch M3 Max (36GB/1TB SSD)',
+        price: 89990000,
+        quantity: 1,
+      },
+    ],
+  },
+  {
+    id: 'ord-1025',
+    orderCode: '#BK-1025',
+    customerName: 'Hoàng Tuấn Kiệt',
+    phone: '0988776655',
+    address: '268 Lý Thường Kiệt, Quận 10, TP.HCM',
+    note: 'Chuyển khoản thành công qua VietQR.',
+    totalAmount: 31490000,
+    paymentMethod: 'QR_PAY',
+    status: 'confirmed',
+    trackingInfo: 'Đã xác nhận: Đơn hàng đã đóng gói chuẩn bị giao cho đơn vị vận chuyển.',
+    createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+    items: [
+      {
+        productId: 'p1000000-0000-0000-0000-000000000005',
+        productName: 'Samsung Galaxy S24 Ultra 5G 12GB/512GB Xám Titan',
+        price: 31490000,
+        quantity: 1,
+      },
+    ],
+  },
+  {
+    id: 'ord-1026',
+    orderCode: '#BK-1026',
+    customerName: 'Trần Minh Anh',
+    phone: '0901234567',
+    address: '54 Nguyễn Thị Minh Khai, Hải Châu, Đà Nẵng',
+    note: 'Thanh toán tiền mặt khi nhận hàng (COD).',
+    totalAmount: 7490000,
+    paymentMethod: 'COD',
+    status: 'pending',
+    trackingInfo: 'Chờ xác nhận: Nhân viên cửa hàng đang liên hệ để chốt thông tin giao hàng.',
+    createdAt: new Date(Date.now() - 3600000 * 0.5).toISOString(),
+    items: [
+      {
+        productId: 'p1000000-0000-0000-0000-000000000006',
+        productName: 'Sony WH-1000XM5 Chống Ồn Chủ Động Đỉnh Cao',
+        price: 7490000,
+        quantity: 1,
+      },
+    ],
+  },
+];
+
+export async function fetchAllOrders(status?: string, page = 1, limit = 20): Promise<{
+  orders: Order[];
+  total: number;
+  totalPages: number;
+}> {
+  try {
+    const url = new URL(`${API_BASE_URL}/orders`);
+    if (status && status !== 'all') url.searchParams.set('status', status);
+    url.searchParams.set('page', page.toString());
+    url.searchParams.set('limit', limit.toString());
+
+    const res = await fetch(url.toString(), { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        return {
+          orders: json.data,
+          total: json.pagination?.total || json.data.length,
+          totalPages: json.pagination?.totalPages || 1,
+        };
+      }
+    }
+  } catch (error) {
+    console.warn('[API] fetchAllOrders fallback to local seed:', error);
+  }
+
+  let list = [...FALLBACK_ORDERS];
+  if (status && status !== 'all') {
+    list = list.filter((o) => o.status.toLowerCase() === status.toLowerCase());
+  }
+
+  return {
+    orders: list,
+    total: list.length,
+    totalPages: 1,
+  };
+}
+
+export async function updateOrderStatusApi(
+  orderCode: string,
+  status: string,
+  trackingInfo?: string
+): Promise<ApiResponse<Order>> {
+  try {
+    const cleanCode = orderCode.trim().replace(/^#/, '');
+    const res = await fetch(`${API_BASE_URL}/orders/${encodeURIComponent(cleanCode)}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, trackingInfo }),
+    });
+    const json = await res.json();
+    return json;
+  } catch {
+    // In-memory fallback
+    const found = FALLBACK_ORDERS.find(
+      (o) => o.orderCode.replace(/^#/, '') === orderCode.replace(/^#/, '')
+    );
+    if (found) {
+      found.status = status as OrderStatus;
+      if (trackingInfo) found.trackingInfo = trackingInfo;
+      return { success: true, data: found, message: 'Cập nhật thành công (Chế độ mô phỏng)!' };
+    }
+    return { success: false, error: 'Không thể kết nối máy chủ để cập nhật.' };
+  }
+}
+
+export interface KnowledgeDoc {
+  id: string;
+  title: string;
+  category: string;
+  summary: string;
+  content: string;
+  chunksCount: number;
+  updatedAt: string;
+}
+
+export const FALLBACK_KNOWLEDGE_DOCS: KnowledgeDoc[] = [
+  {
+    id: 'k1',
+    title: 'Chính sách bảo hành tiêu chuẩn và 1 đổi 1 trong 30 ngày',
+    category: 'warranty',
+    summary: 'Quy định điều kiện đổi mới trong 30 ngày và bảo hành chính hãng 12-24 tháng.',
+    content: 'Tất cả sản phẩm bán ra tại BK-Store đều là hàng chính hãng 100% nguyên seal. Khách hàng được đổi mới 1-1 trong 30 ngày đầu tiên nếu máy phát sinh lỗi phần cứng từ nhà sản xuất. Sau 30 ngày, máy được bảo hành miễn phí theo chính sách của hãng tại các trung tâm bảo hành ủy quyền của Apple, Dell, Asus, Samsung, Sony.',
+    chunksCount: 4,
+    updatedAt: '2026-09-20',
+  },
+  {
+    id: 'k2',
+    title: 'Quy trình và phương thức giao hàng toàn quốc',
+    category: 'shipping',
+    summary: 'Miễn phí giao hàng toàn quốc cho đơn từ 1.000.000₫, giao hỏa tốc 2h nội thành.',
+    content: 'BK-Store áp dụng chính sách miễn phí vận chuyển toàn quốc cho tất cả đơn hàng có giá trị từ 1.000.000₫ trở lên. Với các đơn hàng nội thành Hà Nội, TP.HCM và Đà Nẵng, khách hàng có thể chọn hình thức giao hỏa tốc nhận máy trong vòng 2 giờ. Khách hàng được đồng kiểm tra ngoại quan máy trước khi thanh toán COD.',
+    chunksCount: 3,
+    updatedAt: '2026-09-21',
+  },
+  {
+    id: 'k3',
+    title: 'Hướng dẫn thanh toán chuyển khoản tự động qua VietQR',
+    category: 'payment',
+    summary: 'Cú pháp chuyển khoản chuẩn, ngân hàng thụ hưởng và xác nhận tự động.',
+    content: 'Hệ thống hỗ trợ thanh toán qua mã VietQR liên kết 40+ ngân hàng Việt Nam. Khách hàng chỉ cần quét mã QR trên màn hình đặt hàng, hệ thống tự động điền đúng số tiền và nội dung chuyển khoản là Mã đơn hàng (ví dụ #BK-1024). Sau khi chuyển khoản, đơn hàng sẽ được tự động kích hoạt xác nhận trong vòng 1-3 phút.',
+    chunksCount: 3,
+    updatedAt: '2026-09-21',
+  },
+  {
+    id: 'k4',
+    title: 'Tư vấn lựa chọn cấu hình Laptop cho Kỹ sư phần mềm & AI',
+    category: 'hardware_guide',
+    summary: 'Tiêu chuẩn RAM tối thiểu 32GB, chip M3 Max/Intel Core Ultra và card rời RTX.',
+    content: 'Đối với lập trình viên AI & Data Science: Ưu tiên máy có tối thiểu 32GB RAM để chạy các mô hình Local LLM (Ollama, vLLM). Chip Apple M3 Max hoặc laptop Windows trang bị card rời NVIDIA GeForce RTX 4060 trở lên giúp tăng tốc độ huấn luyện mô hình và tính toán ma trận GPU.',
+    chunksCount: 5,
+    updatedAt: '2026-09-22',
+  },
+];
+

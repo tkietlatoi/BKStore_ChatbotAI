@@ -160,6 +160,120 @@ const tests: TestCase[] = [
       }
     },
   },
+  {
+    name: '10. Admin List All Orders (/api/orders)',
+    run: async () => {
+      const res = await fetch(`${BASE_URL}/api/orders?page=1&limit=10`);
+      if (!res.ok) throw new Error(`Expected 200, got ${res.status}`);
+      const body = await res.json();
+      if (!body.success || !Array.isArray(body.data)) {
+        throw new Error('Expected success true and data array of orders');
+      }
+      if (body.data.length === 0) {
+        throw new Error('Expected at least 1 order in list');
+      }
+    },
+  },
+  {
+    name: '11. Create New Product (/api/products)',
+    run: async () => {
+      const payload = {
+        name: 'ASUS ROG Zephyrus G16 OLED 2026',
+        categorySlug: 'laptop',
+        brand: 'ASUS',
+        price: 55990000,
+        originalPrice: 59990000,
+        stockQuantity: 15,
+        thumbnail: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?auto=format&fit=crop&w=800&q=80',
+        images: ['https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?auto=format&fit=crop&w=800&q=80'],
+        specs: {
+          CPU: 'Intel Core Ultra 9 185H',
+          GPU: 'NVIDIA GeForce RTX 4080',
+          RAM: '32GB LPDDR5X',
+        },
+        description: 'Laptop gaming cao cấp siêu mỏng nhẹ với màn hình ROG Nebula OLED 2.5K 240Hz.',
+        warrantyMonths: 24,
+      };
+
+      const res = await fetch(`${BASE_URL}/api/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.status !== 201) throw new Error(`Expected status 201, got ${res.status}`);
+      const body = await res.json();
+      if (!body.success || !body.data.id || !body.data.slug) {
+        throw new Error('Expected created product with id and slug');
+      }
+
+      // Verify product detail lookup by slug
+      const detailRes = await fetch(`${BASE_URL}/api/products/${body.data.slug}`);
+      if (detailRes.status !== 200) {
+        throw new Error(`Failed to fetch newly created product by slug: ${body.data.slug}`);
+      }
+      const detailBody = await detailRes.json();
+      if (detailBody.data.brand !== 'ASUS' || detailBody.data.price !== 55990000) {
+        throw new Error('Product detail properties do not match created data');
+      }
+    },
+  },
+  {
+    name: '12. Update Product (/api/products/:id)',
+    run: async () => {
+      // Find the created product or an existing product
+      const listRes = await fetch(`${BASE_URL}/api/products?search=ASUS ROG Zephyrus G16`);
+      const listBody = await listRes.json();
+      if (!listBody.data || listBody.data.length === 0) {
+        throw new Error('Target product for update not found');
+      }
+
+      const targetId = listBody.data[0].id;
+      const updatePayload = {
+        price: 52990000,
+        stockQuantity: 20,
+      };
+
+      const res = await fetch(`${BASE_URL}/api/products/${targetId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatePayload),
+      });
+
+      if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}`);
+      const body = await res.json();
+      if (!body.success || body.data.price !== 52990000) {
+        throw new Error(`Expected updated price 52990000, got ${body.data?.price}`);
+      }
+    },
+  },
+  {
+    name: '13. Delete Product (/api/products/:id)',
+    run: async () => {
+      const listRes = await fetch(`${BASE_URL}/api/products?search=ASUS ROG Zephyrus G16`);
+      const listBody = await listRes.json();
+      if (!listBody.data || listBody.data.length === 0) {
+        throw new Error('Target product for delete not found');
+      }
+
+      const targetId = listBody.data[0].id;
+      const targetSlug = listBody.data[0].slug;
+
+      const res = await fetch(`${BASE_URL}/api/products/${targetId}`, {
+        method: 'DELETE',
+      });
+
+      if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}`);
+      const body = await res.json();
+      if (!body.success) throw new Error('Expected delete success to be true');
+
+      // Verify product is no longer found
+      const verifyRes = await fetch(`${BASE_URL}/api/products/${targetSlug}`);
+      if (verifyRes.status !== 404) {
+        throw new Error(`Expected 404 for deleted product, got ${verifyRes.status}`);
+      }
+    },
+  },
 ];
 
 const runAllTests = async () => {

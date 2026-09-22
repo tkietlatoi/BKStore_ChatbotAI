@@ -122,6 +122,11 @@ export const Footer: React.FC<FooterProps> = ({ onOpenTracking }) => {
               <li><a href="#" className="hover:text-slate-200 transition-colors">Chính sách giao hàng siêu tốc</a></li>
               <li><a href="#" className="hover:text-slate-200 transition-colors">Hướng dẫn thanh toán VietQR</a></li>
               <li><a href="#" className="hover:text-slate-200 transition-colors">Quy định bảo mật NFR-03</a></li>
+              <li>
+                <a href="/admin" className="text-slate-400 hover:text-cyan-300 transition-colors flex items-center gap-1 font-mono">
+                  <span>⚙ Quản trị Hệ thống (Admin Portal)</span>
+                </a>
+              </li>
             </ul>
 
             <div className="pt-3 border-t border-slate-800">
