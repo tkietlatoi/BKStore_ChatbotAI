@@ -53,9 +53,9 @@ export default function AdminLayout({
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row text-slate-900 font-sans">
+    <div className="min-h-screen md:h-screen bg-slate-100 flex flex-col md:flex-row text-slate-900 font-sans md:overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0">
+      <aside className="w-full md:w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0 md:h-screen md:sticky md:top-0 overflow-y-auto z-20">
         {/* Brand Area */}
         <div className="p-5 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -120,9 +120,9 @@ export default function AdminLayout({
       </aside>
 
       {/* Main Admin Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 md:h-screen md:overflow-hidden">
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 shadow-xs">
+        <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 shadow-xs z-10 sticky top-0">
           <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
             <span className="text-slate-400">BK-Store Admin</span>
             <span>/</span>

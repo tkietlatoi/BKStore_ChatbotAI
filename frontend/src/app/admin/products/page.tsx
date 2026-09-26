@@ -785,7 +785,7 @@ export default function AdminProductsPage() {
                     </code>
                   </div>
                   <p className="text-[10.5px] text-slate-500">
-                    Bạn có thể copy/paste trực tiếp bất kỳ ảnh nào vào thư mục trên, rồi điền đường dẫn dạng <code className="text-blue-700 font-mono font-medium">/products/tên-ảnh.jpg</code> hoặc bấm nút "Tải ảnh từ máy" ở trên.
+                    Bạn có thể copy/paste trực tiếp bất kỳ ảnh nào vào thư mục trên, rồi điền đường dẫn dạng <code className="text-blue-700 font-mono font-medium">/products/tên-ảnh.jpg</code> hoặc bấm nút &quot;Tải ảnh từ máy&quot; ở trên.
                   </p>
                 </div>
 
@@ -812,7 +812,7 @@ export default function AdminProductsPage() {
                           Chưa có ảnh nào trong folder <code className="font-mono text-blue-600">frontend/public/products/</code>
                         </p>
                         <p className="text-[11px] text-slate-400 mt-1">
-                          Hãy copy ảnh vào folder đó hoặc dùng nút "Tải ảnh từ máy" phía trên!
+                          Hãy copy ảnh vào folder đó hoặc dùng nút &quot;Tải ảnh từ máy&quot; phía trên!
                         </p>
                       </div>
                     ) : (
