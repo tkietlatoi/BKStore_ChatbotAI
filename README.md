@@ -1,4 +1,5 @@
 # BK-Store: Website Thương Mại Điện Tử Thiết Bị Công Nghệ Tích Hợp AI Chatbot
+# Link Notion Dự án: https://app.notion.com/p/BK-Store-chatbot-AI-c8f1c094d508834d97dc81377b278b2e
 
 > **Đồ án liên ngành Công nghệ Thông tin**  
 > Nghiên cứu và xây dựng Website thương mại điện tử thiết bị công nghệ tích hợp Trợ lý ảo AI chăm sóc khách hàng dựa trên nền tảng **Node.js, Express, LangChain.js và Google Gemini**.
