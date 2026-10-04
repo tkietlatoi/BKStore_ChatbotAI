@@ -1,23 +1,19 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans, Inter, JetBrains_Mono } from 'next/font/google';
+import { Be_Vietnam_Pro, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  variable: '--font-display',
+const beVietnamPro = Be_Vietnam_Pro({
+  variable: '--font-sans',
   subsets: ['latin', 'vietnamese'],
-  weight: ['500', '600', '700', '800'],
-});
-
-const inter = Inter({
-  variable: '--font-body',
-  subsets: ['latin', 'vietnamese'],
-  weight: ['400', '500', '600', '700'],
+  weight: ['400', '500', '600', '700', '800'],
+  display: 'swap',
 });
 
 const jetbrainsMono = JetBrains_Mono({
   variable: '--font-mono',
   subsets: ['latin', 'vietnamese'],
   weight: ['400', '500', '600'],
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -33,7 +29,7 @@ export default function RootLayout({
   return (
     <html
       lang="vi"
-      className={`${plusJakartaSans.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased scroll-smooth`}
+      className={`${beVietnamPro.variable} ${jetbrainsMono.variable} h-full antialiased scroll-smooth`}
     >
       <body className="min-h-full flex flex-col bg-[#F8FAFC] text-[#0F172A] font-sans antialiased selection:bg-blue-600 selection:text-white">
         {children}
