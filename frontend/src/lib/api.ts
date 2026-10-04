@@ -742,6 +742,25 @@ export interface KnowledgeDoc {
   updatedAt: string;
 }
 
+export interface KnowledgeChunk {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  category: string;
+  sectionTitle?: string;
+  chunkIndex: number;
+  content: string;
+  embedding?: number[];
+}
+
+export interface KnowledgeMetrics {
+  documentsCount: number;
+  chunksCount: number;
+  vectorizedCount: number;
+  embedModel: string;
+  embeddingDimensions: number;
+}
+
 export const FALLBACK_KNOWLEDGE_DOCS: KnowledgeDoc[] = [
   {
     id: 'k1',
@@ -780,4 +799,69 @@ export const FALLBACK_KNOWLEDGE_DOCS: KnowledgeDoc[] = [
     updatedAt: '2026-09-22',
   },
 ];
+
+export async function fetchKnowledgeDocuments(): Promise<KnowledgeDoc[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/knowledge`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+      return json.data;
+    }
+  } catch (error) {
+    console.warn('[API] fetchKnowledgeDocuments fallback to local seed:', error);
+  }
+  return FALLBACK_KNOWLEDGE_DOCS;
+}
+
+export async function fetchKnowledgeMetrics(): Promise<KnowledgeMetrics | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/knowledge/metrics`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.success && json.data) {
+      return json.data;
+    }
+  } catch (error) {
+    console.warn('[API] fetchKnowledgeMetrics error:', error);
+  }
+  return null;
+}
+
+export async function fetchDocumentChunks(docId: string): Promise<KnowledgeChunk[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/knowledge/${docId}/chunks`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.success && Array.isArray(json.data)) {
+      return json.data;
+    }
+  } catch (error) {
+    console.warn('[API] fetchDocumentChunks error:', error);
+  }
+  return [];
+}
+
+export async function searchKnowledgeDocs(query: string, limit = 3): Promise<{
+  score: number;
+  chunkId: string;
+  documentTitle: string;
+  sectionTitle?: string;
+  content: string;
+}[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/knowledge/search?q=${encodeURIComponent(query)}&limit=${limit}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.success && Array.isArray(json.data)) {
+      return json.data;
+    }
+  } catch (error) {
+    console.warn('[API] searchKnowledgeDocs error:', error);
+  }
+  return [];
+}
+
 

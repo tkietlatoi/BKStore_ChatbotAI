@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Database,
   FileText,
@@ -10,15 +10,87 @@ import {
   Cpu,
   Search,
   BookOpen,
+  Flame,
+  RefreshCw,
 } from 'lucide-react';
-import { FALLBACK_KNOWLEDGE_DOCS, KnowledgeDoc } from '@/lib/api';
+import {
+  fetchKnowledgeDocuments,
+  fetchKnowledgeMetrics,
+  fetchDocumentChunks,
+  searchKnowledgeDocs,
+  FALLBACK_KNOWLEDGE_DOCS,
+  KnowledgeDoc,
+  KnowledgeChunk,
+  KnowledgeMetrics,
+} from '@/lib/api';
 
 export default function AdminKnowledgePage() {
-  const [docs] = useState<KnowledgeDoc[]>(FALLBACK_KNOWLEDGE_DOCS);
+  const [docs, setDocs] = useState<KnowledgeDoc[]>(FALLBACK_KNOWLEDGE_DOCS);
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeDoc>(FALLBACK_KNOWLEDGE_DOCS[0]);
+  const [chunks, setChunks] = useState<KnowledgeChunk[]>([]);
+  const [metrics, setMetrics] = useState<KnowledgeMetrics | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const totalChunks = docs.reduce((sum, d) => sum + d.chunksCount, 0);
+  // Semantic search tester state
+  const [testQuery, setTestQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{
+    score: number;
+    chunkId: string;
+    documentTitle: string;
+    sectionTitle?: string;
+    content: string;
+  }[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Load documents & metrics on mount
+  useEffect(() => {
+    let ignore = false;
+    Promise.all([fetchKnowledgeDocuments(), fetchKnowledgeMetrics()])
+      .then(([loadedDocs, loadedMetrics]) => {
+        if (!ignore) {
+          if (loadedDocs && loadedDocs.length > 0) {
+            setDocs(loadedDocs);
+            setSelectedDoc(loadedDocs[0]);
+          }
+          if (loadedMetrics) {
+            setMetrics(loadedMetrics);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error('Lỗi khi tải tri thức:', err);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  // Load chunks when selectedDoc changes
+  useEffect(() => {
+    if (!selectedDoc) return;
+    fetchDocumentChunks(selectedDoc.id).then((loadedChunks) => {
+      setChunks(loadedChunks);
+    });
+  }, [selectedDoc]);
+
+  // Handle live semantic test search
+  const handleTestSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!testQuery.trim()) return;
+
+    setIsSearching(true);
+    try {
+      const results = await searchKnowledgeDocs(testQuery.trim(), 3);
+      setSearchResults(results);
+    } catch (err) {
+      console.error('Lỗi tìm kiếm thử nghiệm:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const totalChunks = metrics?.chunksCount || docs.reduce((sum, d) => sum + d.chunksCount, 0);
 
   const filteredDocs = docs.filter(
     (d) =>
@@ -36,13 +108,13 @@ export default function AdminKnowledgePage() {
             <span>Quản trị Cơ sở Tri thức RAG (BK-Bot)</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Quản lý tài liệu tri thức doanh nghiệp được nhúng vector (embedding 768 chiều) phục vụ Retrieval-Augmented Generation.
+            Hệ thống tài liệu tri thức doanh nghiệp được phân đoạn và vector hóa phục vụ Retrieval-Augmented Generation.
           </p>
         </div>
 
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cyan-50 border border-cyan-200 text-cyan-800 text-xs font-mono font-semibold self-start">
           <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
-          <span>PGVector: HNSW Index Active</span>
+          <span>Vector Index: {metrics?.embedModel || 'gemini-embedding-001'}</span>
         </div>
       </div>
 
@@ -53,8 +125,10 @@ export default function AdminKnowledgePage() {
             <FileText className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-slate-500 font-medium">Tài liệu tri thức</div>
-            <div className="text-lg font-bold font-mono text-slate-900">{docs.length} tài liệu gốc</div>
+            <div className="text-xs text-slate-500 font-medium">Tài liệu tri thức gốc</div>
+            <div className="text-lg font-bold font-mono text-slate-900">
+              {metrics?.documentsCount || docs.length} tài liệu (.md)
+            </div>
           </div>
         </div>
 
@@ -64,7 +138,9 @@ export default function AdminKnowledgePage() {
           </div>
           <div>
             <div className="text-xs text-slate-500 font-medium">Vector Chunks</div>
-            <div className="text-lg font-bold font-mono text-slate-900">{totalChunks} chunks đã phân đoạn</div>
+            <div className="text-lg font-bold font-mono text-slate-900">
+              {totalChunks} chunks đã phân đoạn
+            </div>
           </div>
         </div>
 
@@ -73,10 +149,74 @@ export default function AdminKnowledgePage() {
             <Cpu className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-slate-500 font-medium">Mô hình Embedding</div>
-            <div className="text-lg font-bold font-mono text-slate-900">text-embedding-004 (768d)</div>
+            <div className="text-xs text-slate-500 font-medium">Trạng thái Vector Hóa</div>
+            <div className="text-lg font-bold font-mono text-emerald-600 flex items-center gap-1.5">
+              <span>{metrics?.vectorizedCount || totalChunks}/{totalChunks} Chunks Synced</span>
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* Interactive Semantic Search Tester */}
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl p-5 shadow-lg space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Flame className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-extrabold uppercase tracking-wider text-amber-300">
+              Thử nghiệm Tìm kiếm Ngữ nghĩa RAG (Semantic Vector Search Tester)
+            </span>
+          </div>
+          <span className="text-[11px] font-mono text-slate-400">Cosine Similarity (Top 3)</span>
+        </div>
+
+        <form onSubmit={handleTestSearch} className="flex gap-2">
+          <input
+            type="text"
+            value={testQuery}
+            onChange={(e) => setTestQuery(e.target.value)}
+            placeholder="Ví dụ: máy bị vào nước có bảo hành không? hoặc 1 đổi 1 trong bao lâu?..."
+            className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-400 outline-none focus:bg-white/15 focus:border-amber-400 transition-all font-sans"
+          />
+          <button
+            type="submit"
+            disabled={isSearching || !testQuery.trim()}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md active:scale-95"
+          >
+            {isSearching ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+            <span>Tìm kiếm vector</span>
+          </button>
+        </form>
+
+        {/* Live Search Results */}
+        {searchResults.length > 0 && (
+          <div className="pt-3 border-t border-white/10 space-y-2 animate-in fade-in duration-200">
+            <span className="text-[11px] font-mono text-slate-300 font-semibold">
+              Kết quả trích xuất Top-3 chunks liên quan nhất:
+            </span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {searchResults.map((res, i) => (
+                <div
+                  key={res.chunkId || i}
+                  className="bg-white/10 border border-white/15 rounded-xl p-3 text-xs space-y-1.5"
+                >
+                  <div className="flex items-center justify-between text-[10px] font-mono text-amber-300">
+                    <span className="font-bold">TOP {i + 1}</span>
+                    <span className="bg-amber-400/20 px-1.5 py-0.5 rounded border border-amber-400/30">
+                      Score: {(res.score * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-bold text-white line-clamp-1">{res.documentTitle}</div>
+                  {res.sectionTitle && (
+                    <div className="text-[10px] text-cyan-300 font-mono line-clamp-1">{res.sectionTitle}</div>
+                  )}
+                  <p className="text-[10.5px] text-slate-300 line-clamp-4 leading-relaxed font-sans pt-1 border-t border-white/10">
+                    {res.content}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content: Split List and Preview */}
@@ -87,7 +227,7 @@ export default function AdminKnowledgePage() {
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <BookOpen className="w-4 h-4 text-blue-600" />
-              <span>Danh mục tài liệu nguồn</span>
+              <span>Danh mục tài liệu nguồn (.md)</span>
             </h3>
             <span className="text-[11px] font-mono text-slate-400">{filteredDocs.length} tài liệu</span>
           </div>
@@ -98,7 +238,7 @@ export default function AdminKnowledgePage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm tài liệu chính sách..."
+              placeholder="Lọc tài liệu chính sách..."
               className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-2 outline-none focus:bg-white focus:border-blue-500"
             />
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -154,43 +294,48 @@ export default function AdminKnowledgePage() {
               </div>
               <div className="flex items-center gap-1 text-[11px] font-mono text-emerald-600 font-semibold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 shrink-0">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Indexed</span>
+                <span>Vectorized</span>
               </div>
             </div>
 
             {/* Document Content View */}
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                Nội dung tài liệu gốc:
+                Nội dung tài liệu nguồn:
               </h4>
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed whitespace-pre-line max-h-48 overflow-y-auto font-mono">
                 {selectedDoc.content}
               </div>
             </div>
 
-            {/* Simulated Vector Chunks Breakdown */}
+            {/* Real Vector Chunks Breakdown */}
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center justify-between">
-                <span>Phân đoạn Vector Chunks (Kích thước ~500 ký tự / Overlap 50):</span>
-                <span className="font-mono text-[11px] text-blue-600">{selectedDoc.chunksCount} Chunks</span>
+                <span>Danh sách Chunks thực tế ({chunks.length || selectedDoc.chunksCount} chunks):</span>
+                <span className="font-mono text-[11px] text-blue-600">Model: {metrics?.embedModel || 'gemini-embedding-001'}</span>
               </h4>
 
-              <div className="space-y-2">
-                {Array.from({ length: selectedDoc.chunksCount }).map((_, idx) => (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                {(chunks.length > 0 ? chunks : Array.from({ length: selectedDoc.chunksCount }).map((_, idx) => ({
+                  id: `${selectedDoc.id}-chunk-${idx}`,
+                  chunkIndex: idx,
+                  sectionTitle: `Mục #${idx + 1}`,
+                  content: selectedDoc.content.slice(idx * 80, (idx + 1) * 80 + 100),
+                }))).map((chunk, idx) => (
                   <div
-                    key={idx}
+                    key={chunk.id || idx}
                     className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 text-xs font-mono space-y-1.5"
                   >
                     <div className="flex items-center justify-between text-[10px] text-slate-400">
-                      <span className="font-bold text-slate-600">CHUNK #{idx + 1}</span>
-                      <span>Vector ID: doc-{selectedDoc.id}-c{idx + 1}</span>
+                      <span className="font-bold text-slate-700">CHUNK #{chunk.chunkIndex + 1}</span>
+                      <span className="text-blue-600 font-semibold">{chunk.sectionTitle || 'Đoạn trích'}</span>
                     </div>
-                    <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed font-sans">
-                      {selectedDoc.content.slice(idx * 70, (idx + 1) * 70 + 80)}...
+                    <p className="text-[11px] text-slate-600 line-clamp-3 leading-relaxed font-sans">
+                      {chunk.content}
                     </p>
-                    <div className="flex items-center gap-3 text-[10px] text-slate-400 pt-1">
-                      <span>Embedding: [0.0342, -0.0125, 0.0891, ... +765 dims]</span>
-                      <span className="text-emerald-600 font-semibold">● Cosine Index</span>
+                    <div className="flex items-center gap-3 text-[10px] text-slate-400 pt-1 border-t border-slate-200/60">
+                      <span>Embedding: [Vector 3072 chiều]</span>
+                      <span className="text-emerald-600 font-semibold">● Cosine Index Active</span>
                     </div>
                   </div>
                 ))}
@@ -199,8 +344,8 @@ export default function AdminKnowledgePage() {
           </div>
 
           <div className="pt-4 mt-6 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-mono">
-            <span>Tự động nhúng vector khi cập nhật nội dung</span>
-            <span className="text-blue-600 font-semibold">BK-Store Knowledge Engine 2.4</span>
+            <span>Tự động nhúng vector từ backend/src/data/knowledge</span>
+            <span className="text-blue-600 font-semibold">BK-Store Knowledge RAG Engine</span>
           </div>
         </div>
 

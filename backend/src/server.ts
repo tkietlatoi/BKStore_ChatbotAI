@@ -1,5 +1,6 @@
 import { app } from './app';
 import { checkDbConnection, pool } from './config/db';
+import { ragService } from './services/rag.service';
 
 const PORT = process.env.PORT || 5000;
 
@@ -11,6 +12,9 @@ const startServer = async () => {
   } else {
     console.log('ℹ️ Database is not available. Please start PostgreSQL container with `npm run db:up`.');
   }
+
+  // Initialize Knowledge Base & Vector Store
+  await ragService.initialize();
 
   const server = app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT} (http://localhost:${PORT})`);

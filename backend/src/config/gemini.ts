@@ -7,7 +7,7 @@ const apiKey = process.env.GEMINI_API_KEY || '';
 
 export const getGeminiChatModel = (temperature = 0.4) => {
   return new ChatGoogleGenerativeAI({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-3.8-flash',
     apiKey: apiKey,
     temperature,
     maxRetries: 2,
@@ -16,7 +16,7 @@ export const getGeminiChatModel = (temperature = 0.4) => {
 
 export const getGeminiEmbeddings = () => {
   return new GoogleGenerativeAIEmbeddings({
-    model: 'text-embedding-004',
+    model: 'gemini-embedding-001',
     apiKey: apiKey,
   });
 };
