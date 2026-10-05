@@ -100,10 +100,18 @@ export interface ApiResponse<T> {
   };
 }
 
+export interface ChatMessageCard {
+  type: 'products' | 'order' | 'inventory';
+  data: any;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   products?: Product[];
+  cards?: ChatMessageCard;
+  citations?: string[];
+  toolUsed?: string;
   timestamp: string;
 }

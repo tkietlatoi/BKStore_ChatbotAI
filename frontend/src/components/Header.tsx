@@ -45,7 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
+    <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
       {/* Top Ambient Ticker */}
       <div className="bg-slate-900 text-slate-300 text-xs py-1.5 px-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
