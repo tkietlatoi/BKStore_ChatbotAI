@@ -46,6 +46,9 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
   const [isTyping, setIsTyping] = useState(false);
   const [addedItemIds, setAddedItemIds] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  messagesRef.current = messages;
+  const lastPromptRef = useRef<string>('');
   const addItem = useCartStore((state) => state.addItem);
 
   const quickPrompts = [
@@ -93,8 +96,8 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
       setInput('');
       setIsTyping(true);
 
-      // Build history for context
-      const historyPayload = messages.slice(-6).map((m) => ({
+      // Build history for context using stable ref
+      const historyPayload = messagesRef.current.slice(-6).map((m) => ({
         role: m.role,
         content: m.content,
       }));
@@ -130,10 +133,11 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
         setIsTyping(false);
       }
     },
-    [messages, isTyping]
+    [isTyping]
   );
 
   const handleClearHistory = () => {
+    lastPromptRef.current = '';
     setMessages([
       {
         id: 'msg-welcome',
@@ -146,7 +150,8 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
   };
 
   useEffect(() => {
-    if (initialPrompt) {
+    if (initialPrompt && initialPrompt.trim() && initialPrompt !== lastPromptRef.current) {
+      lastPromptRef.current = initialPrompt;
       const timer = setTimeout(() => {
         handleSendPrompt(initialPrompt);
       }, 50);
