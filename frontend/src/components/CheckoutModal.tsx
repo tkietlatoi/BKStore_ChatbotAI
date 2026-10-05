@@ -107,6 +107,23 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
   };
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setCreatedOrder(null);
+      setErrorMsg('');
+      setIsLoading(false);
+      setIsCopied(false);
+    }
+  }, [isOpen]);
+
+  const handleClose = () => {
+    setCreatedOrder(null);
+    setErrorMsg('');
+    setIsLoading(false);
+    setIsCopied(false);
+    onClose();
+  };
+
   const handleCopyCode = () => {
     if (!createdOrder) return;
     navigator.clipboard.writeText(createdOrder.orderCode);
@@ -116,7 +133,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   const handleTrackCreatedOrder = () => {
     if (createdOrder) {
-      onOrderSuccess(createdOrder);
+      const orderToTrack = createdOrder;
+      setCreatedOrder(null);
+      setErrorMsg('');
+      onOrderSuccess(orderToTrack);
       onClose();
     }
   };
@@ -127,7 +147,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         
         {/* Close Button */}
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
         >
           <X className="w-5 h-5" />
@@ -230,10 +250,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <ArrowRight className="w-4 h-4" />
               </button>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="py-3 px-5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold text-sm"
               >
-                Đóng
+                Đóng & Tiếp tục mua sắm
               </button>
             </div>
           </div>

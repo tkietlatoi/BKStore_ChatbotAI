@@ -279,6 +279,7 @@ export default function HomePage() {
 
       {/* Checkout Modal */}
       <CheckoutModal
+        key={`checkout-${isCheckoutOpen ? 'open' : 'closed'}`}
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
         onOrderSuccess={handleOrderSuccess}

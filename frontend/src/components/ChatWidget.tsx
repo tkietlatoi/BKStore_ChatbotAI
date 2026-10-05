@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
 import {
   Sparkles,
   X,
@@ -244,11 +245,80 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                   <div
                     className={`rounded-2xl p-3.5 leading-relaxed ${
                       msg.role === 'user'
-                        ? 'bg-blue-600 text-white rounded-br-none shadow-sm'
-                        : 'bg-white border border-slate-200/90 text-slate-800 rounded-bl-none shadow-xs whitespace-pre-line'
+                        ? 'bg-blue-600 text-white rounded-br-none shadow-sm whitespace-pre-wrap'
+                        : 'bg-white border border-slate-200/90 text-slate-800 rounded-bl-none shadow-xs text-xs'
                     }`}
                   >
-                    {msg.content}
+                    {msg.role === 'user' ? (
+                      msg.content
+                    ) : (
+                      <ReactMarkdown
+                        components={{
+                          h1: ({ children }) => (
+                            <h1 className="text-sm font-bold text-slate-900 mt-2.5 mb-1.5 flex items-center gap-1.5">
+                              {children}
+                            </h1>
+                          ),
+                          h2: ({ children }) => (
+                            <h2 className="text-xs font-bold text-blue-900 mt-2 mb-1 pb-1 border-b border-slate-100 flex items-center gap-1">
+                              {children}
+                            </h2>
+                          ),
+                          h3: ({ children }) => (
+                            <h3 className="text-xs font-bold text-slate-900 mt-2 mb-1">
+                              {children}
+                            </h3>
+                          ),
+                          p: ({ children }) => (
+                            <p className="mb-2 last:mb-0 leading-relaxed text-slate-700">
+                              {children}
+                            </p>
+                          ),
+                          strong: ({ children }) => (
+                            <strong className="font-semibold text-slate-900">
+                              {children}
+                            </strong>
+                          ),
+                          ul: ({ children }) => (
+                            <ul className="list-disc pl-4 space-y-1 my-1.5 text-slate-700 marker:text-blue-500">
+                              {children}
+                            </ul>
+                          ),
+                          ol: ({ children }) => (
+                            <ol className="list-decimal pl-4 space-y-1 my-1.5 text-slate-700 marker:text-blue-600 marker:font-semibold">
+                              {children}
+                            </ol>
+                          ),
+                          li: ({ children }) => (
+                            <li className="leading-relaxed pl-0.5">
+                              {children}
+                            </li>
+                          ),
+                          code: ({ children }) => (
+                            <code className="px-1.5 py-0.5 rounded bg-slate-100 text-blue-700 font-mono text-[11px] border border-slate-200/80">
+                              {children}
+                            </code>
+                          ),
+                          blockquote: ({ children }) => (
+                            <blockquote className="border-l-2 border-blue-500 pl-3 my-2 text-slate-600 italic bg-blue-50/50 py-1 rounded-r">
+                              {children}
+                            </blockquote>
+                          ),
+                          a: ({ href, children }) => (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-700 underline font-medium"
+                            >
+                              {children}
+                            </a>
+                          ),
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    )}
                   </div>
 
                   {/* INTERACTIVE CARDS */}
