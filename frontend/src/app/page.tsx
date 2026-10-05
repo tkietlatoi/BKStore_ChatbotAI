@@ -299,6 +299,7 @@ export default function HomePage() {
         isOpen={isChatOpen}
         onToggle={() => setIsChatOpen((prev) => !prev)}
         initialPrompt={chatInitialPrompt}
+        onQuickView={(prod) => setQuickViewProduct(prod)}
       />
     </div>
   );

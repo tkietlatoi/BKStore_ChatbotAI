@@ -15,24 +15,26 @@ import {
   PackageCheck,
   Building2,
   CheckCircle2,
-  BookOpen,
   RotateCcw,
   Store,
+  Eye,
 } from 'lucide-react';
 import { ChatMessage, Product } from '@/types';
-import { sendChatMessage } from '@/lib/api';
+import { sendChatMessage, fetchProductBySlug } from '@/lib/api';
 import { useCartStore } from '@/store/cartStore';
 
 interface ChatWidgetProps {
   isOpen: boolean;
   onToggle: () => void;
   initialPrompt?: string;
+  onQuickView?: (product: Product) => void;
 }
 
 export const ChatWidget: React.FC<ChatWidgetProps> = ({
   isOpen,
   onToggle,
   initialPrompt,
+  onQuickView,
 }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -80,6 +82,38 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
     setTimeout(() => {
       setAddedItemIds((prev) => ({ ...prev, [prod.id]: false }));
     }, 1500);
+  };
+
+  const handleOpenQuickView = async (prod: any) => {
+    if (!onQuickView) return;
+
+    const baseProduct: Product = {
+      id: prod.id,
+      name: prod.name,
+      slug: prod.slug,
+      brand: prod.brand,
+      price: Number(prod.price),
+      originalPrice: prod.originalPrice ? Number(prod.originalPrice) : undefined,
+      thumbnail: prod.thumbnail,
+      images: prod.images && prod.images.length > 0 ? prod.images : [prod.thumbnail],
+      specs: prod.specs && typeof prod.specs === 'object' && Object.keys(prod.specs).length > 0 ? prod.specs : {},
+      description: prod.description || prod.specsSummary || '',
+      stock: prod.stockQuantity ?? prod.stock ?? 10,
+    };
+
+    if (Object.keys(baseProduct.specs).length === 0 || baseProduct.images.length <= 1) {
+      try {
+        const fullProd = await fetchProductBySlug(prod.slug || prod.id);
+        if (fullProd) {
+          onQuickView(fullProd);
+          return;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch full product for quick view:', err);
+      }
+    }
+
+    onQuickView(baseProduct);
   };
 
   const handleSendPrompt = React.useCallback(
@@ -333,12 +367,13 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                         {msg.cards.data.map((prod: any) => (
                           <div
                             key={prod.id}
-                            className="bg-white border border-slate-200/90 rounded-xl p-2.5 shadow-xs hover:border-blue-300 transition-all flex gap-3 items-center"
+                            onClick={() => handleOpenQuickView(prod)}
+                            className="bg-white border border-slate-200/90 rounded-xl p-2.5 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all flex gap-3 items-center cursor-pointer group"
                           >
                             <img
                               src={prod.thumbnail}
                               alt={prod.name}
-                              className="w-16 h-16 object-cover rounded-lg bg-slate-100 shrink-0 border border-slate-100"
+                              className="w-16 h-16 object-cover rounded-lg bg-slate-100 shrink-0 border border-slate-100 group-hover:scale-105 transition-transform"
                               onError={(e) => {
                                 (e.target as HTMLImageElement).src =
                                   'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=200&q=80';
@@ -348,7 +383,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                               <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">
                                 {prod.brand}
                               </span>
-                              <h4 className="text-xs font-bold text-slate-900 truncate" title={prod.name}>
+                              <h4 className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors" title={prod.name}>
                                 {prod.name}
                               </h4>
                               {prod.specsSummary && (
@@ -369,7 +404,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                                 )}
                               </div>
                             </div>
-                            <div className="flex flex-col gap-1 shrink-0">
+                            <div className="flex flex-col gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={(e) => handleAddToCart(e, prod)}
                                 className={`p-1.5 rounded-lg text-[10px] font-medium flex items-center justify-center transition-all ${
@@ -385,13 +420,13 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                                   <ShoppingBag className="w-3.5 h-3.5" />
                                 )}
                               </button>
-                              <Link
-                                href={`/products/${prod.slug}`}
-                                className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] flex items-center justify-center"
-                                title="Xem chi tiết"
+                              <button
+                                onClick={() => handleOpenQuickView(prod)}
+                                className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600 text-[10px] flex items-center justify-center transition-colors"
+                                title="Xem chi tiết nhanh"
                               >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </Link>
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -468,24 +503,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                     </div>
                   )}
 
-                  {/* CITATIONS BADGES (RAG SOURCES) */}
-                  {msg.citations && msg.citations.length > 0 && (
-                    <div className="pt-1 flex flex-wrap gap-1 items-center">
-                      <span className="text-[9px] text-slate-400 font-medium flex items-center gap-1">
-                        <BookOpen className="w-3 h-3 text-blue-500" />
-                        Nguồn tri thức BK-Store:
-                      </span>
-                      {msg.citations.map((cite, cIdx) => (
-                        <span
-                          key={cIdx}
-                          className="px-1.5 py-0.5 bg-blue-50/80 text-blue-700 rounded text-[9px] border border-blue-100 font-medium truncate max-w-[200px]"
-                          title={cite}
-                        >
-                          {cite}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+
                 </div>
 
                 {msg.role === 'user' && (
