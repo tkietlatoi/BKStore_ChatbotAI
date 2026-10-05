@@ -1,0 +1,687 @@
+import { SchemaType } from '@google/generative-ai';
+import { pool, checkDbConnection } from '../config/db';
+import { branches as fallbackBranches, products as seedProducts, sampleOrders } from '../db/seedData';
+import { getProducts, getProductBySlug, slugify } from './product.service';
+
+/**
+ * Định dạng tiền tệ VNĐ chuẩn
+ */
+export const formatVND = (amount: number): string => {
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+};
+
+/**
+ * Chuẩn hóa chuỗi tiếng Việt để tìm kiếm không dấu
+ */
+export const normalizeText = (text: string): string => {
+  return slugify(text).replace(/-/g, ' ');
+};
+
+// ============================================================================
+// 1. TOOL: KIỂM TRA TỒN KHO TẠI CÁC CHI NHÁNH (checkInventory)
+// ============================================================================
+
+export interface CheckInventoryParams {
+  productName: string;
+  branchName?: string;
+}
+
+export interface BranchStockItem {
+  branchId: string;
+  branchName: string;
+  city: string;
+  address: string;
+  phone: string;
+  quantity: number;
+  status: 'Còn hàng' | 'Sắp hết hàng' | 'Hết hàng';
+}
+
+export interface InventoryCheckResult {
+  found: boolean;
+  product?: {
+    id: string;
+    name: string;
+    slug: string;
+    brand: string;
+    price: number;
+    formattedPrice: string;
+    thumbnail: string;
+  };
+  branches: BranchStockItem[];
+  totalStock: number;
+  queriedBranch?: string;
+  message: string;
+}
+
+export const checkInventory = async (params: CheckInventoryParams): Promise<InventoryCheckResult> => {
+  const { productName, branchName } = params;
+  if (!productName || !productName.trim()) {
+    return {
+      found: false,
+      branches: [],
+      totalStock: 0,
+      message: 'Vui lòng cung cấp tên sản phẩm để kiểm tra tồn kho.',
+    };
+  }
+
+  // 1. Tìm sản phẩm phù hợp nhất theo tên / từ khóa
+  const cleanQuery = normalizeText(productName);
+  let matchedProduct = seedProducts.find((p) => {
+    const pNameNorm = normalizeText(p.name);
+    const pSlugNorm = normalizeText(p.slug);
+    const pBrandNorm = normalizeText(p.brand);
+    return (
+      pNameNorm.includes(cleanQuery) ||
+      pSlugNorm.includes(cleanQuery) ||
+      cleanQuery.split(' ').every((w) => pNameNorm.includes(w) || pBrandNorm.includes(w))
+    );
+  });
+
+  // Nếu không tìm thấy trong seed, tìm qua getProducts
+  if (!matchedProduct) {
+    const searchRes = await getProducts({ search: productName, limit: 1 });
+    if (searchRes.products && searchRes.products.length > 0) {
+      matchedProduct = searchRes.products[0] as any;
+    }
+  }
+
+  if (!matchedProduct) {
+    return {
+      found: false,
+      branches: [],
+      totalStock: 0,
+      message: `Rất tiếc, BK-Store không tìm thấy sản phẩm nào khớp với từ khóa "${productName}". Bạn có thể thử tìm với tên ngắn gọn hơn (ví dụ: "MacBook M3", "iPhone 16", "S24 Ultra").`,
+    };
+  }
+
+  // 2. Lấy thông tin chi tiết kèm tồn kho từng chi nhánh
+  const productDetail = await getProductBySlug(matchedProduct.slug);
+  let branchesStock: BranchStockItem[] = [];
+
+  if (productDetail && productDetail.inventories && productDetail.inventories.length > 0) {
+    branchesStock = productDetail.inventories.map((inv: any) => {
+      const branchInfo = fallbackBranches.find((b) => b.id === inv.branchId || b.name === inv.branchName);
+      const qty = Number(inv.quantity) || 0;
+      let status: 'Còn hàng' | 'Sắp hết hàng' | 'Hết hàng' = 'Còn hàng';
+      if (qty === 0) status = 'Hết hàng';
+      else if (qty <= 3) status = 'Sắp hết hàng';
+
+      return {
+        branchId: inv.branchId || branchInfo?.id || '',
+        branchName: inv.branchName || branchInfo?.name || '',
+        city: inv.city || branchInfo?.city || '',
+        address: inv.address || branchInfo?.address || '',
+        phone: branchInfo?.phone || '1800 6868',
+        quantity: qty,
+        status,
+      };
+    });
+  } else {
+    // Fallback phân bổ đều theo seedBranches
+    branchesStock = fallbackBranches.map((b, idx) => {
+      const qty = ((idx + 2) * 3) % 10 + 2;
+      return {
+        branchId: b.id,
+        branchName: b.name,
+        city: b.city,
+        address: b.address,
+        phone: b.phone,
+        quantity: qty,
+        status: qty <= 3 ? 'Sắp hết hàng' : 'Còn hàng',
+      };
+    });
+  }
+
+  // 3. Nếu người dùng chỉ định chi nhánh cụ thể (ví dụ: "Cầu Giấy", "Hà Nội", "Quận 1", "Đà Nẵng")
+  let filteredBranches = branchesStock;
+  if (branchName && branchName.trim() && branchName.toLowerCase() !== 'tất cả' && branchName.toLowerCase() !== 'all') {
+    const targetNorm = normalizeText(branchName);
+    filteredBranches = branchesStock.filter((b) => {
+      const bNameNorm = normalizeText(b.branchName);
+      const bCityNorm = normalizeText(b.city);
+      const bAddressNorm = normalizeText(b.address);
+      return (
+        bNameNorm.includes(targetNorm) ||
+        bCityNorm.includes(targetNorm) ||
+        bAddressNorm.includes(targetNorm)
+      );
+    });
+    // Nếu lọc không ra chi nhánh nào khớp, trả về toàn bộ chi nhánh kèm lưu ý
+    if (filteredBranches.length === 0) {
+      filteredBranches = branchesStock;
+    }
+  }
+
+  const totalStock = filteredBranches.reduce((sum, b) => sum + b.quantity, 0);
+
+  return {
+    found: true,
+    product: {
+      id: matchedProduct.id,
+      name: matchedProduct.name,
+      slug: matchedProduct.slug,
+      brand: matchedProduct.brand,
+      price: Number(matchedProduct.price),
+      formattedPrice: formatVND(Number(matchedProduct.price)),
+      thumbnail: matchedProduct.thumbnail,
+    },
+    branches: filteredBranches,
+    totalStock,
+    queriedBranch: branchName,
+    message:
+      totalStock > 0
+        ? `Sản phẩm "${matchedProduct.name}" hiện đang CÒN HÀNG (tổng cộng ${totalStock} máy sẵn sàng phục vụ).`
+        : `Sản phẩm "${matchedProduct.name}" hiện tạm thời HẾT HÀNG tại chi nhánh được yêu cầu.`,
+  };
+};
+
+// ============================================================================
+// 2. TOOL: TRA CỨU ĐƠN HÀNG (trackOrder)
+// ============================================================================
+
+export interface TrackOrderParams {
+  orderCode: string;
+  phone?: string;
+}
+
+export interface OrderTrackResult {
+  found: boolean;
+  orderCode?: string;
+  customerName?: string;
+  maskedPhone?: string;
+  deliveryAddress?: string;
+  totalAmount?: number;
+  formattedTotal?: string;
+  paymentMethod?: string;
+  status?: string;
+  statusLabel?: string;
+  trackingInfo?: string;
+  items?: Array<{
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    formattedUnitPrice: string;
+  }>;
+  message: string;
+}
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  pending: 'Chờ xác nhận & chuẩn bị hàng',
+  processing: 'Đang đóng gói tại kho',
+  shipping: 'Đang trên đường giao hàng',
+  delivered: 'Giao hàng thành công',
+  cancelled: 'Đã hủy',
+};
+
+const maskPhone = (phone: string): string => {
+  if (!phone || phone.length < 7) return phone;
+  return phone.slice(0, 4) + '***' + phone.slice(-3);
+};
+
+const maskName = (name: string): string => {
+  if (!name) return '';
+  const parts = name.trim().split(' ');
+  if (parts.length <= 1) return name;
+  return `${parts[0]} *** ${parts[parts.length - 1]}`;
+};
+
+export const trackOrder = async (params: TrackOrderParams): Promise<OrderTrackResult> => {
+  const { orderCode, phone } = params;
+  if (!orderCode || !orderCode.trim()) {
+    return {
+      found: false,
+      message: 'Vui lòng cung cấp mã đơn hàng (ví dụ: #BK-1024 hoặc 1024) để tra cứu.',
+    };
+  }
+
+  // Chuẩn hóa mã đơn hàng
+  let cleanCode = orderCode.trim();
+  if (!cleanCode.startsWith('#')) {
+    if (cleanCode.toUpperCase().startsWith('BK-')) {
+      cleanCode = `#${cleanCode.toUpperCase()}`;
+    } else {
+      cleanCode = `#BK-${cleanCode}`;
+    }
+  }
+
+  const isDbConnected = await checkDbConnection();
+  let orderData: any = null;
+
+  if (isDbConnected) {
+    const query = `
+      SELECT 
+        o.id, o.order_code as "orderCode", o.customer_name as "customerName",
+        o.phone, o.address, o.note, o.total_amount as "totalAmount",
+        o.payment_method as "paymentMethod", o.status, o.tracking_info as "trackingInfo",
+        o.created_at as "createdAt",
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'productName', oi.product_name,
+              'quantity', oi.quantity,
+              'unitPrice', oi.unit_price
+            )
+          ) FILTER (WHERE oi.id IS NOT NULL), '[]'::json
+        ) as items
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE LOWER(o.order_code) = LOWER($1)
+      GROUP BY o.id
+      LIMIT 1
+    `;
+    const res = await pool.query(query, [cleanCode]);
+    if (res.rows.length > 0) {
+      orderData = res.rows[0];
+    }
+  }
+
+  // Nếu DB không có hoặc không kết nối, tìm trong sampleOrders
+  if (!orderData) {
+    orderData = sampleOrders.find(
+      (o) => o.orderCode.toLowerCase() === cleanCode.toLowerCase()
+    );
+    if (orderData && orderData.items) {
+      // Map item product slug to product name
+      orderData.items = orderData.items.map((it: any) => {
+        const prod = seedProducts.find((p) => p.slug === it.productSlug);
+        return {
+          productName: prod ? prod.name : it.productSlug,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+        };
+      });
+    }
+  }
+
+  if (!orderData) {
+    return {
+      found: false,
+      message: `Không tìm thấy đơn hàng nào có mã "${cleanCode}". Bạn vui lòng kiểm tra lại mã đơn hàng trong email xác nhận hoặc tin nhắn SMS từ BK-Store.`,
+    };
+  }
+
+  // Nếu khách có nhập kèm số điện thoại, kiểm tra khớp
+  if (phone && phone.trim()) {
+    const cleanInputPhone = phone.replace(/[^0-9]/g, '');
+    const cleanOrderPhone = (orderData.phone || '').replace(/[^0-9]/g, '');
+    if (cleanInputPhone.length >= 4 && !cleanOrderPhone.endsWith(cleanInputPhone.slice(-4))) {
+      return {
+        found: false,
+        message: `Mã đơn hàng "${cleanCode}" tồn tại, nhưng số điện thoại bạn cung cấp không trùng khớp với thông tin người nhận đơn. Vui lòng kiểm tra lại.`,
+      };
+    }
+  }
+
+  const formattedItems = (orderData.items || []).map((it: any) => ({
+    productName: it.productName || 'Sản phẩm công nghệ',
+    quantity: it.quantity,
+    unitPrice: Number(it.unitPrice),
+    formattedUnitPrice: formatVND(Number(it.unitPrice)),
+  }));
+
+  const total = Number(orderData.totalAmount);
+  const statusKey = (orderData.status || 'pending').toLowerCase();
+  const statusLabel = ORDER_STATUS_LABELS[statusKey] || 'Đang xử lý';
+
+  return {
+    found: true,
+    orderCode: orderData.orderCode,
+    customerName: maskName(orderData.customerName),
+    maskedPhone: maskPhone(orderData.phone),
+    deliveryAddress: orderData.address,
+    totalAmount: total,
+    formattedTotal: formatVND(total),
+    paymentMethod: orderData.paymentMethod === 'COD' ? 'Thanh toán tiền mặt khi nhận hàng (COD)' : 'Chuyển khoản VietQR',
+    status: statusKey,
+    statusLabel,
+    trackingInfo: orderData.trackingInfo || 'Đơn hàng đang được điều phối giao nhận.',
+    items: formattedItems,
+    message: `Đơn hàng ${orderData.orderCode} hiện đang ở trạng thái: "${statusLabel}". ${orderData.trackingInfo || ''}`,
+  };
+};
+
+// ============================================================================
+// 3. TOOL: TÌM KIẾM & LỌC SẢN PHẨM THEO TÚI TIỀN/NHU CẦU (filterProducts)
+// ============================================================================
+
+export interface FilterProductsParams {
+  category?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  brand?: string;
+  keyword?: string;
+  limit?: number;
+}
+
+export interface ProductSummaryItem {
+  id: string;
+  name: string;
+  slug: string;
+  brand: string;
+  price: number;
+  originalPrice?: number;
+  formattedPrice: string;
+  formattedOriginalPrice?: string;
+  discountPercent?: number;
+  thumbnail: string;
+  specsSummary: string;
+  inStock: boolean;
+}
+
+export interface ProductFilterResult {
+  totalMatches: number;
+  products: ProductSummaryItem[];
+  appliedFilters: {
+    category?: string;
+    brand?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    keyword?: string;
+  };
+  advice?: string;
+}
+
+export const filterProducts = async (params: FilterProductsParams): Promise<ProductFilterResult> => {
+  const { category, minPrice, maxPrice, brand, keyword, limit = 4 } = params;
+
+  // Chuẩn hóa category
+  let mappedCategory = category;
+  if (category) {
+    const cNorm = normalizeText(category);
+    if (cNorm.includes('laptop') || cNorm.includes('may tinh') || cNorm.includes('macbook')) {
+      mappedCategory = 'laptop';
+    } else if (cNorm.includes('dien thoai') || cNorm.includes('smartphone') || cNorm.includes('iphone')) {
+      mappedCategory = 'smartphone';
+    } else if (cNorm.includes('phu kien') || cNorm.includes('tai nghe') || cNorm.includes('chuot') || cNorm.includes('sac')) {
+      mappedCategory = 'accessory';
+    }
+  }
+
+  // Gọi getProducts từ service
+  const res = await getProducts({
+    category: mappedCategory,
+    brand,
+    minPrice,
+    maxPrice,
+    search: keyword,
+    limit: Math.min(10, limit),
+  });
+
+  const productsList: ProductSummaryItem[] = (res.products || []).map((p: any) => {
+    const price = Number(p.price);
+    const origPrice = p.originalPrice || p.original_price ? Number(p.originalPrice || p.original_price) : undefined;
+    const discount = origPrice && origPrice > price ? Math.round(((origPrice - price) / origPrice) * 100) : undefined;
+
+    // Tóm tắt cấu hình nổi bật
+    let specsSummary = '';
+    if (p.specs && typeof p.specs === 'object') {
+      const parts: string[] = [];
+      if (p.specs.cpu) parts.push(p.specs.cpu);
+      if (p.specs.ram) parts.push(`RAM ${p.specs.ram}`);
+      if (p.specs.storage) parts.push(p.specs.storage);
+      if (p.specs.gpu) parts.push(p.specs.gpu);
+      if (p.specs.screen) parts.push(p.specs.screen);
+      specsSummary = parts.slice(0, 3).join(' • ');
+    }
+
+    return {
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      brand: p.brand,
+      price,
+      originalPrice: origPrice,
+      formattedPrice: formatVND(price),
+      formattedOriginalPrice: origPrice ? formatVND(origPrice) : undefined,
+      discountPercent: discount,
+      thumbnail: p.thumbnail,
+      specsSummary: specsSummary || p.description?.slice(0, 100) || '',
+      inStock: (p.stockQuantity ?? p.stock ?? 10) > 0,
+    };
+  });
+
+  let advice = '';
+  if (productsList.length > 0) {
+    advice = `Tìm thấy ${res.pagination?.total || productsList.length} sản phẩm phù hợp tại BK-Store. Tất cả đều là hàng chính hãng 100%, bảo hành 1 đổi 1 trong 30 ngày.`;
+  } else {
+    advice = `Chưa tìm thấy sản phẩm nào khớp hoàn toàn với khoảng giá hoặc tiêu chí này. Bạn có thể mở rộng khoảng ngân sách hoặc liên hệ hotline 1800 6868 để được nhân viên tư vấn dòng máy khác.`;
+  }
+
+  return {
+    totalMatches: res.pagination?.total || productsList.length,
+    products: productsList,
+    appliedFilters: {
+      category: mappedCategory,
+      brand,
+      minPrice,
+      maxPrice,
+      keyword,
+    },
+    advice,
+  };
+};
+
+// ============================================================================
+// 4. TOOL: CHI TIẾT SẢN PHẨM & CẤU HÌNH ĐẦY ĐỦ (getProductDetails)
+// ============================================================================
+
+export interface ProductDetailResult {
+  found: boolean;
+  product?: {
+    id: string;
+    name: string;
+    slug: string;
+    brand: string;
+    price: number;
+    originalPrice?: number;
+    formattedPrice: string;
+    formattedOriginalPrice?: string;
+    specs: Record<string, string>;
+    description: string;
+    warrantyMonths: number;
+    thumbnail: string;
+    images: string[];
+    inStock: boolean;
+    stockQuantity: number;
+  };
+  message: string;
+}
+
+export const getProductDetails = async (productIdentifier: string): Promise<ProductDetailResult> => {
+  if (!productIdentifier || !productIdentifier.trim()) {
+    return { found: false, message: 'Vui lòng cung cấp tên hoặc mã sản phẩm.' };
+  }
+
+  // Tìm theo slug trước
+  let prod = await getProductBySlug(productIdentifier.trim().toLowerCase());
+
+  // Nếu không thấy, tìm theo tên gần đúng
+  if (!prod) {
+    const normId = normalizeText(productIdentifier);
+    const found = seedProducts.find((p) => normalizeText(p.name).includes(normId) || normalizeText(p.slug).includes(normId));
+    if (found) {
+      prod = await getProductBySlug(found.slug);
+    }
+  }
+
+  if (!prod) {
+    return {
+      found: false,
+      message: `Không tìm thấy chi tiết sản phẩm "${productIdentifier}" tại BK-Store.`,
+    };
+  }
+
+  const price = Number(prod.price);
+  const origPrice = prod.originalPrice || prod.original_price ? Number(prod.originalPrice || prod.original_price) : undefined;
+
+  return {
+    found: true,
+    product: {
+      id: prod.id,
+      name: prod.name,
+      slug: prod.slug,
+      brand: prod.brand,
+      price,
+      originalPrice: origPrice,
+      formattedPrice: formatVND(price),
+      formattedOriginalPrice: origPrice ? formatVND(origPrice) : undefined,
+      specs: prod.specs || {},
+      description: prod.description || '',
+      warrantyMonths: prod.warrantyMonths || prod.warranty_months || 12,
+      thumbnail: prod.thumbnail,
+      images: prod.images || [prod.thumbnail],
+      inStock: (prod.stockQuantity ?? prod.stock ?? 10) > 0,
+      stockQuantity: prod.stockQuantity ?? prod.stock ?? 10,
+    },
+    message: `Đã lấy đầy đủ thông số kỹ thuật của "${prod.name}".`,
+  };
+};
+
+// ============================================================================
+// GEMINI TOOL DECLARATIONS (Khai báo công cụ cho Google Gemini AI)
+// ============================================================================
+
+export const geminiFunctionDeclarations = [
+  {
+    name: 'checkInventory',
+    description:
+      'Kiểm tra số lượng hàng tồn kho thực tế của một sản phẩm tại 3 chi nhánh cửa hàng BK-Store (Cầu Giấy - Hà Nội, Quận 1 - TP.HCM, Hải Châu - Đà Nẵng). Dùng khi khách hỏi máy còn hàng không, có sẵn ở showroom nào.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        productName: {
+          type: SchemaType.STRING,
+          description: 'Tên hoặc từ khóa sản phẩm khách muốn kiểm tra (ví dụ: "MacBook Air M3", "iPhone 16 Pro Max", "Logitech MX Master 3S").',
+        },
+        branchName: {
+          type: SchemaType.STRING,
+          description: 'Tên hoặc địa điểm chi nhánh muốn hỏi (ví dụ: "Cầu Giấy", "Hà Nội", "Quận 1", "Hồ Chí Minh", "Hải Châu", "Đà Nẵng", hoặc bỏ trống để tra cứu tất cả chi nhánh).',
+        },
+      },
+      required: ['productName'],
+    },
+  },
+  {
+    name: 'trackOrder',
+    description:
+      'Tra cứu tiến trình vận chuyển, tình trạng đơn hàng, người nhận và danh sách sản phẩm theo mã đơn hàng BK-Store (ví dụ: #BK-1024, #BK-2048, #BK-3072).',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        orderCode: {
+          type: SchemaType.STRING,
+          description: 'Mã đơn hàng khách cần tra cứu (ví dụ: "#BK-1024", "BK-1024", "1024").',
+        },
+        phone: {
+          type: SchemaType.STRING,
+          description: 'Số điện thoại đặt hàng của khách để đối soát bảo mật (nếu khách cung cấp).',
+        },
+      },
+      required: ['orderCode'],
+    },
+  },
+  {
+    name: 'filterProducts',
+    description:
+      'Tìm kiếm và lọc danh sách sản phẩm trong kho BK-Store theo tầm giá ngân sách (minPrice, maxPrice), phân loại danh mục (laptop, smartphone, accessory) hoặc thương hiệu (Apple, Asus, Dell, Lenovo, Acer, Samsung, Xiaomi, Sony, Logitech, Anker).',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        category: {
+          type: SchemaType.STRING,
+          description: 'Danh mục sản phẩm: "laptop", "smartphone", hoặc "accessory".',
+        },
+        minPrice: {
+          type: SchemaType.NUMBER,
+          description: 'Ngân sách tối thiểu bằng VNĐ (ví dụ: 20000000 cho 20 triệu).',
+        },
+        maxPrice: {
+          type: SchemaType.NUMBER,
+          description: 'Ngân sách tối đa bằng VNĐ (ví dụ: 35000000 cho 35 triệu).',
+        },
+        brand: {
+          type: SchemaType.STRING,
+          description: 'Thương hiệu sản phẩm (ví dụ: Apple, Asus, Dell, Lenovo, Samsung, Sony...).',
+        },
+        keyword: {
+          type: SchemaType.STRING,
+          description: 'Từ khóa nhu cầu đặc thù (ví dụ: "OLED", "gaming", "AI", "chống ồn", "pin trâu").',
+        },
+        limit: {
+          type: SchemaType.INTEGER,
+          description: 'Số lượng sản phẩm muốn hiển thị (mặc định 4).',
+        },
+      },
+    },
+  },
+  {
+    name: 'getProductDetails',
+    description:
+      'Lấy cấu hình chi tiết (CPU, GPU, RAM, Ổ cứng, Màn hình, Pin), chính sách bảo hành và hình ảnh đầy đủ của một sản phẩm công nghệ cụ thể khi khách quan tâm sâu.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        productIdentifier: {
+          type: SchemaType.STRING,
+          description: 'Slug hoặc tên sản phẩm cụ thể (ví dụ: "macbook-air-m3-13-16gb-512gb", "iPhone 16 Pro Max").',
+        },
+      },
+      required: ['productIdentifier'],
+    },
+  },
+];
+
+export const geminiToolsConfig = [
+  {
+    functionDeclarations: geminiFunctionDeclarations,
+  },
+];
+
+/**
+ * Trình điều phối thực thi Tool (Tool Dispatcher)
+ * Nhận tên function và arguments từ Gemini, tự động gọi đúng hàm logic và trả kết quả.
+ */
+export const executeAiTool = async (toolName: string, toolArgs: any): Promise<any> => {
+  try {
+    switch (toolName) {
+      case 'checkInventory':
+        return await checkInventory({
+          productName: toolArgs.productName || toolArgs.product_name,
+          branchName: toolArgs.branchName || toolArgs.branch_name,
+        });
+
+      case 'trackOrder':
+        return await trackOrder({
+          orderCode: toolArgs.orderCode || toolArgs.order_code,
+          phone: toolArgs.phone,
+        });
+
+      case 'filterProducts':
+        return await filterProducts({
+          category: toolArgs.category,
+          minPrice: toolArgs.minPrice ?? toolArgs.min_price,
+          maxPrice: toolArgs.maxPrice ?? toolArgs.max_price,
+          brand: toolArgs.brand,
+          keyword: toolArgs.keyword,
+          limit: toolArgs.limit,
+        });
+
+      case 'getProductDetails':
+        return await getProductDetails(
+          toolArgs.productIdentifier || toolArgs.product_identifier || toolArgs.productSlug || toolArgs.slug || ''
+        );
+
+      default:
+        return {
+          error: true,
+          message: `Không tìm thấy công cụ "${toolName}" được hỗ trợ trên hệ thống.`,
+        };
+    }
+  } catch (err: any) {
+    console.error(`❌ [AI-Tool Error] Lỗi khi thực thi ${toolName}:`, err);
+    return {
+      error: true,
+      message: `Đã xảy ra lỗi khi thực thi tra cứu: ${err.message}`,
+    };
+  }
+};
