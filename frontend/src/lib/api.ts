@@ -864,4 +864,36 @@ export async function searchKnowledgeDocs(query: string, limit = 3): Promise<{
   return [];
 }
 
+export interface ChatApiPayload {
+  message: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  stream?: boolean;
+}
+
+export interface ChatApiResponseData {
+  reply: string;
+  citations: string[];
+  cards?: {
+    type: 'products' | 'order' | 'inventory';
+    data: any;
+  };
+  toolUsed?: string;
+  model: string;
+}
+
+export async function sendChatMessage(payload: ChatApiPayload): Promise<ChatApiResponseData> {
+  const res = await fetch(`${API_BASE_URL}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errorJson = await res.json().catch(() => ({}));
+    throw new Error(errorJson.message || `Lỗi kết nối máy chủ (${res.status})`);
+  }
+  const json = await res.json();
+  return json.data;
+}
+
+
 
