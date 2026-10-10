@@ -17,6 +17,7 @@ import {
   Package,
   Layers,
   Sparkles,
+  Boxes,
 } from 'lucide-react';
 import {
   fetchAllOrders,
@@ -209,17 +210,23 @@ export default function AdminDashboardPage() {
           </span>
         </div>
 
-        {/* Catalog Products */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <span className="text-[11px] text-slate-500 font-medium">Sản phẩm & Danh mục</span>
-          <div className="text-xl font-mono font-bold text-blue-600 mt-1">
-            {totalProducts}
+        {/* Catalog Products & Inventory Link */}
+        <Link
+          href="/admin/inventory"
+          className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-slate-500 font-medium group-hover:text-blue-600 transition-colors">Tồn kho 3 Chi nhánh</span>
+            <Boxes className="w-3.5 h-3.5 text-blue-500" />
           </div>
-          <span className="text-[10px] text-slate-500 font-mono mt-2 flex items-center gap-1">
-            <Layers className="w-3 h-3 text-slate-400" />
-            {totalCategories} danh mục hàng
+          <div className="text-xl font-mono font-bold text-blue-600 mt-1">
+            {totalProducts} <span className="text-xs font-normal text-slate-500">SKUs</span>
+          </div>
+          <span className="text-[10px] text-blue-600 font-medium mt-2 flex items-center gap-1">
+            <span>Quản lý kho chi tiết</span>
+            <ArrowRight className="w-2.5 h-2.5" />
           </span>
-        </div>
+        </Link>
 
         {/* AI Knowledge Chunks */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">

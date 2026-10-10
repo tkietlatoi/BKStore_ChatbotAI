@@ -95,6 +95,7 @@ class RagService {
       else if (filename.includes('tu_van')) category = 'buying_guide';
       else if (filename.includes('doanh_nghiep')) category = 'company_info';
       else if (filename.includes('thuong_hieu') || filename.includes('brand')) category = 'brand_info';
+      else if (filename.includes('danh_gia') || filename.includes('review')) category = 'review_policy';
 
       // Generate a short 1-line summary
       const firstParagraph = rawText

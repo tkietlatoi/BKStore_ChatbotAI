@@ -630,33 +630,29 @@ export const sampleKnowledgePolicies = [
     title: 'Thông tin hệ sinh thái các thương hiệu công nghệ chính hãng tại BK-Store',
     category: 'thuong_hieu_chinh_hang',
     content: `THÔNG TIN THƯƠNG HIỆU CÔNG NGHỆ CHÍNH HÃNG PHÂN PHỐI TẠI BK-STORE:
-1. Apple (Hoa Kỳ):
-- Hệ sinh thái phần cứng đỉnh cao: MacBook Air M2/M3, MacBook Pro M3 Pro/Max, iPhone 16 Pro Max, iPad Pro, AirPods.
-- Thế mạnh: Chip Apple Silicon tiết kiệm điện, pin 15-18 giờ, màn hình Liquid Retina XDR sắc nét, hệ điều hành macOS/iOS bảo mật, vỏ nhôm Unibody nguyên khối.
-- Bảo hành chính hãng 12 tháng tại các trung tâm Apple Authorized Service Providers (AASP) toàn quốc.
-2. Dell (Hoa Kỳ):
-- Dòng máy: Dell XPS 13/14/16 (doanh nhân cao cấp), Dell Inspiron (học tập văn phòng), Dell Precision (máy trạm đồ họa chuyên nghiệp).
-- Thế mạnh: Độ bền chuẩn quân đội MIL-STD-810H, màn hình InfinityEdge viền mỏng tỉ lệ 16:10, bàn phím gõ êm ái hàng đầu.
-- Bảo hành chính hãng 12-24 tháng kèm dịch vụ tận nơi Dell ProSupport / Onsite Service.
-3. ASUS (Đài Loan):
-- Dòng máy: ASUS Zenbook OLED (siêu mỏng nhẹ sang trọng), ASUS ROG Zephyrus G14/G16 OLED & TUF Gaming (gaming đỉnh cao).
-- Thế mạnh: Màn hình Lumina OLED 100% DCI-P3 chuẩn điện ảnh, tản nhiệt kim loại lỏng Liquid Metal và buồng hơi tối ưu hiệu năng.
-- Bảo hành chính hãng quốc tế 24 tháng (2 năm).
-4. Samsung (Hàn Quốc):
-- Dòng máy: Galaxy S24 Ultra, Galaxy S24+, Galaxy Z Fold6, Galaxy Z Flip6, Galaxy Tab S9.
-- Thế mạnh: Tấm nền Dynamic AMOLED 2X 2600 nits, camera 200MP zoom 100x, trí tuệ nhân tạo Galaxy AI (dịch thuật trực tiếp, Circle to Search).
-- Bảo hành chính hãng 12 tháng tại hệ thống Samsung Care+ toàn quốc.
-5. Sony (Nhật Bản):
-- Dòng máy: Tai nghe chống ồn WH-1000XM5, WF-1000XM5, loa di động không dây Extra Bass.
-- Thế mạnh: Công nghệ chống ồn chủ động ANC hàng đầu với chip V1/QN1, chuẩn âm thanh Hi-Res Audio Wireless LDAC, màng loa sợi carbon 30mm.
-- Bảo hành chính hãng 12 tháng tại Sony Electronics Việt Nam.
-6. Keychron (Hồng Kông):
-- Dòng máy: Keychron Q1 Pro/Q3 Max (vỏ nhôm Custom cao cấp), Keychron K2 Pro, K3 Pro (Low-Profile mỏng nhẹ).
-- Thế mạnh: Hỗ trợ chuyển đổi Mac & Windows hoàn hảo, kết nối Bluetooth/2.4GHz không trễ, mạch hotswap thay switch nhanh, firmware QMK/VIA.
-- Bảo hành chính hãng 12 tháng tại BK-Store.
-7. Anker (Hoa Kỳ / Quốc tế):
-- Dòng máy: Củ sạc đa cổng GaNPrime 65W/120W, pin dự phòng Anker Prime 20.000mAh, cáp sạc bọc dù Bio-based.
-- Thế mạnh: Công nghệ bán dẫn GaNPrime siêu nhỏ gọn công suất lớn, sạc thông minh PowerIQ 4.0 và cảm biến kiểm soát nhiệt ActiveShield 2.0.
-- Bảo hành chính hãng 18 tháng (1 đổi 1) tại Anker Việt Nam.`,
+1. Apple (Hoa Kỳ): MacBook Air M2/M3, MacBook Pro M3 Pro/Max, iPhone 16 Pro Max, iPad Pro, AirPods.
+2. Dell (Hoa Kỳ): Dell XPS 13/14/16, Dell Inspiron, Dell Precision.
+3. ASUS (Đài Loan): ASUS Zenbook Lumina OLED, ROG Zephyrus G14/G16 OLED & TUF Gaming.
+4. Samsung (Hàn Quốc): Galaxy S24 Ultra, Galaxy Z Fold6, Galaxy AI.
+5. Sony (Nhật Bản): WH-1000XM5, WF-1000XM5, Hi-Res Audio LDAC.
+6. Keychron (Hồng Kông): Keychron Q1 Pro/Q3 Max nhôm CNC, K2 Pro, QMK/VIA.
+7. Anker (Hoa Kỳ): Củ sạc nhanh GaNPrime 65W/100W, ActiveShield 2.0.`,
+  },
+  {
+    title: 'Chính sách và hướng dẫn đánh giá sản phẩm thực tế (Verified Reviews) BK-Store',
+    category: 'danh_gia_san_pham',
+    content: `CHÍNH SÁCH VÀ HƯỚNG DẪN ĐÁNH GIÁ SẢN PHẨM BK-STORE:
+1. Nguyên tắc xác thực người mua (Verified Purchase):
+- Chỉ những khách hàng đã mua sản phẩm và đơn hàng ở trạng thái "Giao hàng thành công" (delivered) mới có quyền viết đánh giá.
+- Các đơn hàng đang chờ duyệt (pending), đã duyệt (confirmed), đang vận chuyển (shipping) hoặc đã hủy (cancelled) sẽ KHÔNG THỂ gửi đánh giá. Khách hàng cần nhận máy và trải nghiệm thực tế trước khi gửi nhận xét.
+2. Thông tin xác thực bắt buộc:
+- Khách hàng nhập Mã đơn hàng (ví dụ: #BK-1024) và Số điện thoại đặt hàng để hệ thống tự động kiểm tra tính hợp lệ.
+3. Ba hình thức gửi đánh giá trên website:
+- Cách 1: Bấm nút "⭐ Đánh giá" trên thanh Header hoặc Footer của website.
+- Cách 2: Vào mục "Tra cứu vận đơn" (nhập mã đơn + SĐT), bên cạnh mỗi sản phẩm đã giao thành công sẽ có nút "⭐ Đánh giá".
+- Cách 3: Tại trang chi tiết sản phẩm (/products/[slug]), kéo xuống mục "Đánh giá từ khách hàng đã mua sản phẩm" và bấm nút "Viết đánh giá sản phẩm".
+4. Tiêu chuẩn đánh giá và chống trùng lặp:
+- Chấm điểm số sao từ 1 đến 5 sao (★) kèm nhận xét chân thực về chất lượng máy, pin, màn hình, hiệu năng, đóng gói.
+- Chống trùng lặp: Mỗi sản phẩm trong một đơn hàng chỉ được gửi đánh giá tối đa 01 lần. Đánh giá được gắn huy hiệu uy tín "✓ Đã mua hàng tại BK-Store".`,
   },
 ];

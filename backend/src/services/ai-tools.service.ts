@@ -3,6 +3,7 @@ import { pool, checkDbConnection } from '../config/db';
 import { branches as fallbackBranches, products as seedProducts, sampleOrders } from '../db/seedData';
 import { getProducts, getProductBySlug, slugify } from './product.service';
 import { getOrderByCode, getOrdersByPhone } from './order.service';
+import { getReviewsByProduct } from './review.service';
 
 /**
  * Định dạng tiền tệ VNĐ chuẩn
@@ -203,6 +204,8 @@ export interface OrderTrackResult {
     unitPrice: number;
     formattedUnitPrice: string;
   }>;
+  canReview?: boolean;
+  reviewEligibilityNote?: string;
   message: string;
 }
 
@@ -333,6 +336,11 @@ export const trackOrder = async (params: TrackOrderParams): Promise<OrderTrackRe
       orderData.trackingInfo ||
       `Đơn hàng đang ở trạng thái "${statusLabel}". BK-Store đang xử lý đơn hàng theo đúng lộ trình.`,
     items: formattedItems,
+    canReview: statusKey === 'delivered',
+    reviewEligibilityNote:
+      statusKey === 'delivered'
+        ? 'Đơn hàng này đã giao thành công! Quý khách có thể gửi đánh giá cho sản phẩm bằng cách bấm vào nút "⭐ Đánh giá" trên Header/Footer hoặc trong mục Tra cứu vận đơn.'
+        : `Đơn hàng đang ở trạng thái "${statusLabel}". Theo chính sách của BK-Store, chỉ những đơn hàng đã giao thành công (delivered) mới có thể viết đánh giá sản phẩm.`,
     message: `Đơn hàng ${orderData.orderCode} hiện đang ở trạng thái: "${statusLabel}". ${orderData.trackingInfo || ''}`,
   };
 };
@@ -562,6 +570,151 @@ export const getProductDetails = async (productIdentifier: string): Promise<Prod
 };
 
 // ============================================================================
+// 5. TOOL: TRA CỨU ĐÁNH GIÁ SẢN PHẨM TỪ NGƯỜI ĐÃ MUA (getProductReviews)
+// ============================================================================
+
+export interface GetProductReviewsParams {
+  productName: string;
+}
+
+export interface ProductReviewsResult {
+  found: boolean;
+  product?: {
+    id: string;
+    name: string;
+    slug: string;
+    brand: string;
+    price: number;
+    formattedPrice: string;
+    thumbnail: string;
+  };
+  totalReviews: number;
+  averageRating: number;
+  ratingBreakdown: Record<number, number>;
+  reviews: Array<{
+    id: string;
+    customerName: string;
+    phone: string;
+    rating: number;
+    comment: string;
+    orderCode: string;
+    createdAt: string;
+  }>;
+  howToReview: string;
+  message: string;
+}
+
+export const getProductReviewsTool = async (params: GetProductReviewsParams): Promise<ProductReviewsResult> => {
+  const { productName } = params;
+  if (!productName || !productName.trim()) {
+    return {
+      found: false,
+      totalReviews: 0,
+      averageRating: 5.0,
+      ratingBreakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+      reviews: [],
+      howToReview: 'Vui lòng cung cấp tên sản phẩm để tra cứu đánh giá.',
+      message: 'Vui lòng cung cấp tên sản phẩm để tra cứu đánh giá.',
+    };
+  }
+
+  const cleanQuery = normalizeText(productName);
+  let matchedProduct = seedProducts.find((p) => {
+    const pNameNorm = normalizeText(p.name);
+    const pSlugNorm = normalizeText(p.slug);
+    const pSlugClean = pSlugNorm.replace(/-/g, ' ');
+    const pBrandNorm = normalizeText(p.brand);
+    if (
+      pNameNorm.includes(cleanQuery) ||
+      cleanQuery.includes(pNameNorm) ||
+      pSlugClean.includes(cleanQuery) ||
+      cleanQuery.includes(pSlugClean)
+    ) {
+      return true;
+    }
+    const queryWords = cleanQuery.split(' ').filter((w) => w.length >= 2);
+    return (
+      queryWords.length >= 2 &&
+      queryWords.every((w) => pNameNorm.includes(w) || pBrandNorm.includes(w) || pSlugClean.includes(w))
+    );
+  });
+
+  if (!matchedProduct) {
+    const searchRes = await getProducts({ search: productName, limit: 1 });
+    if (searchRes.products && searchRes.products.length > 0) {
+      matchedProduct = searchRes.products[0] as any;
+    }
+  }
+
+  if (!matchedProduct) {
+    return {
+      found: false,
+      totalReviews: 0,
+      averageRating: 5.0,
+      ratingBreakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+      reviews: [],
+      howToReview: 'Để đánh giá sản phẩm: Quý khách bấm vào nút "⭐ Đánh giá" trên Header/Footer và nhập Mã đơn hàng cùng Số điện thoại của đơn hàng đã giao thành công.',
+      message: `Không tìm thấy sản phẩm khớp với "${productName}" để tra cứu đánh giá. Quý khách có thể xem đánh giá trực tiếp trên trang chi tiết từng sản phẩm tại website.`,
+    };
+  }
+
+  const reviewsData = await getReviewsByProduct(matchedProduct.slug);
+  const howToReview = `Để gửi đánh giá cho sản phẩm "${matchedProduct.name}": Sau khi nhận máy thành công (đơn hàng trạng thái delivered), quý khách bấm vào nút "⭐ Đánh giá" trên menu hoặc trong mục Tra cứu vận đơn và nhập Mã đơn hàng cùng Số điện thoại để gửi đánh giá từ 1 đến 5 sao.`;
+
+  return {
+    found: true,
+    product: {
+      id: matchedProduct.id,
+      name: matchedProduct.name,
+      slug: matchedProduct.slug,
+      brand: matchedProduct.brand,
+      price: matchedProduct.price,
+      formattedPrice: formatVND(matchedProduct.price),
+      thumbnail: matchedProduct.thumbnail,
+    },
+    totalReviews: reviewsData.totalReviews,
+    averageRating: reviewsData.averageRating,
+    ratingBreakdown: reviewsData.ratingBreakdown,
+    reviews: reviewsData.reviews.slice(0, 3),
+    howToReview,
+    message: `Sản phẩm "${matchedProduct.name}" hiện có ${reviewsData.totalReviews} lượt đánh giá thực tế từ người đã mua hàng với điểm trung bình ${reviewsData.averageRating}/5 sao.`,
+  };
+};
+
+// ============================================================================
+// 6. TOOL: KIỂM TRA ĐIỀU KIỆN ĐÁNH GIÁ ĐƠN HÀNG (checkReviewEligibility)
+// ============================================================================
+
+export interface CheckReviewEligibilityParams {
+  orderCode: string;
+  phone?: string;
+}
+
+export const checkReviewEligibilityTool = async (params: CheckReviewEligibilityParams) => {
+  const ord = await trackOrder({ orderCode: params.orderCode, phone: params.phone });
+  if (!ord.found) {
+    return {
+      found: false,
+      canReview: false,
+      message: ord.message,
+    };
+  }
+
+  const isDelivered = ord.status === 'delivered';
+  return {
+    found: true,
+    orderCode: ord.orderCode,
+    status: ord.status,
+    statusLabel: ord.statusLabel,
+    canReview: isDelivered,
+    items: ord.items,
+    message: isDelivered
+      ? `Đơn hàng ${ord.orderCode} đã giao hàng thành công! Quý khách ĐỦ ĐIỀU KIỆN gửi đánh giá cho các sản phẩm trong đơn. Quý khách có thể bấm nút "⭐ Đánh giá" trên website hoặc vào Tra cứu vận đơn để gửi đánh giá từ 1 đến 5 sao kèm nhận xét trải nghiệm.`
+      : `Đơn hàng ${ord.orderCode} hiện đang ở trạng thái "${ord.statusLabel}". Theo chính sách BK-Store, chỉ những đơn hàng đã giao thành công (delivered) mới có thể gửi đánh giá sản phẩm nhằm đảm bảo tính khách quan và trải nghiệm thực tế. Quý khách vui lòng chờ nhận hàng thành công để trải nghiệm và đánh giá nhé!`,
+  };
+};
+
+// ============================================================================
 // GEMINI TOOL DECLARATIONS (Khai báo công cụ cho Google Gemini AI)
 // ============================================================================
 
@@ -653,6 +806,40 @@ export const geminiFunctionDeclarations = [
       required: ['productIdentifier'],
     },
   },
+  {
+    name: 'getProductReviews',
+    description:
+      'Tra cứu đánh giá thực tế, số sao trung bình (1-5★) và bình luận trải nghiệm của những khách hàng đã mua một sản phẩm công nghệ cụ thể tại BK-Store. Dùng khi khách hỏi sản phẩm này được mấy sao, khách hàng khen chê gì, đánh giá ra sao.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        productName: {
+          type: SchemaType.STRING,
+          description: 'Tên hoặc từ khóa sản phẩm muốn tra cứu đánh giá (ví dụ: "MacBook Air M3", "iPhone 16 Pro Max", "Sony WH-1000XM5").',
+        },
+      },
+      required: ['productName'],
+    },
+  },
+  {
+    name: 'checkReviewEligibility',
+    description:
+      'Kiểm tra xem một đơn hàng cụ thể đã đủ điều kiện để viết đánh giá sản phẩm hay chưa (chỉ đơn hàng delivered đã giao thành công mới được đánh giá).',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        orderCode: {
+          type: SchemaType.STRING,
+          description: 'Mã đơn hàng cần kiểm tra (ví dụ: "#BK-1024", "BK-2048").',
+        },
+        phone: {
+          type: SchemaType.STRING,
+          description: 'Số điện thoại đặt hàng (nếu có).',
+        },
+      },
+      required: ['orderCode'],
+    },
+  },
 ];
 
 export const geminiToolsConfig = [
@@ -694,6 +881,17 @@ export const executeAiTool = async (toolName: string, toolArgs: any): Promise<an
         return await getProductDetails(
           toolArgs.productIdentifier || toolArgs.product_identifier || toolArgs.productSlug || toolArgs.slug || ''
         );
+
+      case 'getProductReviews':
+        return await getProductReviewsTool({
+          productName: toolArgs.productName || toolArgs.product_name || toolArgs.productIdentifier || '',
+        });
+
+      case 'checkReviewEligibility':
+        return await checkReviewEligibilityTool({
+          orderCode: toolArgs.orderCode || toolArgs.order_code,
+          phone: toolArgs.phone,
+        });
 
       default:
         return {

@@ -11,6 +11,11 @@ import {
   Product,
   ProductReviewsData,
   Review,
+  BranchStockDetail,
+  ProductInventoryItem,
+  InventoryOverviewData,
+  UpdateInventoryPayload,
+  TransferStockPayload,
 } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
@@ -93,25 +98,25 @@ export const FALLBACK_CATEGORIES: Category[] = [
 // Fallback seed branches
 export const FALLBACK_BRANCHES: Branch[] = [
   {
-    id: 'b1',
+    id: 'b1000000-0000-0000-0000-000000000001',
     name: 'BK-Store Cầu Giấy (Hà Nội)',
     city: 'Hà Nội',
     address: '268 Cầu Giấy, P. Dịch Vọng, Q. Cầu Giấy, Hà Nội',
     phone: '024.3838.9999',
   },
   {
-    id: 'b2',
-    name: 'BK-Store Quận 10 (TP.HCM)',
-    city: 'TP.HCM',
-    address: '142 Thành Thái, Phường 12, Quận 10, TP.HCM',
-    phone: '028.3838.8888',
+    id: 'b1000000-0000-0000-0000-000000000002',
+    name: 'BK-Store Quận 1 (TP. Hồ Chí Minh)',
+    city: 'TP. Hồ Chí Minh',
+    address: '123 Lê Lợi, P. Bến Thành, Quận 1, TP. Hồ Chí Minh',
+    phone: '028.3939.8888',
   },
   {
-    id: 'b3',
+    id: 'b1000000-0000-0000-0000-000000000003',
     name: 'BK-Store Hải Châu (Đà Nẵng)',
     city: 'Đà Nẵng',
-    address: '89 Nguyễn Văn Linh, P. Nam Dương, Q. Hải Châu, Đà Nẵng',
-    phone: '0236.3838.777',
+    address: '45 Nguyễn Văn Linh, P. Nam Dương, Q. Hải Châu, Đà Nẵng',
+    phone: '0236.3636.777',
   },
 ];
 
@@ -1130,6 +1135,15 @@ export const FALLBACK_KNOWLEDGE_DOCS: KnowledgeDoc[] = [
     chunksCount: 5,
     updatedAt: '2026-09-22',
   },
+  {
+    id: 'k5',
+    title: 'Chính sách và hướng dẫn đánh giá sản phẩm thực tế (Verified Reviews)',
+    category: 'review_policy',
+    summary: 'Chỉ khách hàng đã nhận hàng thành công mới được đánh giá, nhập Mã đơn + SĐT để xác thực.',
+    content: 'Chính sách Verified Purchase: Chỉ những đơn hàng đã giao thành công (delivered) mới có quyền viết đánh giá 1-5 sao. Khách hàng nhập Mã đơn và Số điện thoại tại nút Đánh giá trên menu hoặc trong mục Tra cứu vận đơn. Mỗi sản phẩm trong đơn được đánh giá 1 lần và gắn huy hiệu uy tín Đã mua hàng tại BK-Store.',
+    chunksCount: 4,
+    updatedAt: '2026-10-10',
+  },
 ];
 
 export async function fetchKnowledgeDocuments(): Promise<KnowledgeDoc[]> {
@@ -1206,7 +1220,7 @@ export interface ChatApiResponseData {
   reply: string;
   citations: string[];
   cards?: {
-    type: 'products' | 'order' | 'inventory';
+    type: 'products' | 'order' | 'inventory' | 'reviews';
     data: any;
   };
   toolUsed?: string;
@@ -1319,6 +1333,212 @@ export async function submitProductReview(
     };
   }
 }
+
+// ============================================================================
+// INVENTORY & WAREHOUSE MANAGEMENT API
+// ============================================================================
+
+const localInventoryStockMap = new Map<string, number>();
+
+function getLocalStock(productId: string, branchId: string): number {
+  const key = `${productId}:${branchId}`;
+  if (!localInventoryStockMap.has(key)) {
+    const pIdx = FALLBACK_PRODUCTS.findIndex((p) => p.id === productId);
+    const bIdx = FALLBACK_BRANCHES.findIndex((b) => b.id === branchId);
+    const initial = pIdx >= 0 && bIdx >= 0 ? ((pIdx * 3 + bIdx * 7) % 8) + 2 : 5;
+    localInventoryStockMap.set(key, initial);
+  }
+  return localInventoryStockMap.get(key) || 0;
+}
+
+export async function fetchInventoryOverview(filters?: {
+  branchId?: string;
+  search?: string;
+  status?: string;
+  category?: string;
+}): Promise<InventoryOverviewData> {
+  const queryParams = new URLSearchParams();
+  if (filters?.branchId && filters.branchId !== 'all') queryParams.set('branchId', filters.branchId);
+  if (filters?.search) queryParams.set('search', filters.search);
+  if (filters?.status && filters.status !== 'all') queryParams.set('status', filters.status);
+  if (filters?.category && filters.category !== 'all') queryParams.set('category', filters.category);
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/inventory?${queryParams.toString()}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.success && json.data) {
+      return json.data;
+    }
+  } catch (err) {
+    console.warn('[API] fetchInventoryOverview fallback:', err);
+  }
+
+  // Fallback in-memory calculation
+  let items: ProductInventoryItem[] = FALLBACK_PRODUCTS.map((p) => {
+    const branchesStock: BranchStockDetail[] = FALLBACK_BRANCHES.map((b) => {
+      const qty = getLocalStock(p.id, b.id);
+      let status: 'Còn hàng' | 'Sắp hết hàng' | 'Hết hàng' = 'Còn hàng';
+      if (qty === 0) status = 'Hết hàng';
+      else if (qty <= 3) status = 'Sắp hết hàng';
+
+      return {
+        branchId: b.id,
+        branchName: b.name,
+        city: b.city,
+        address: b.address,
+        phone: b.phone,
+        quantity: qty,
+        status,
+      };
+    });
+
+    const totalStock = branchesStock.reduce((acc, curr) => acc + curr.quantity, 0);
+    let stockStatus: 'in_stock' | 'low_stock' | 'out_of_stock' = 'in_stock';
+    if (totalStock === 0) stockStatus = 'out_of_stock';
+    else if (totalStock <= 5 || branchesStock.some((b) => b.quantity <= 2)) stockStatus = 'low_stock';
+
+    return {
+      productId: p.id,
+      productName: p.name,
+      productSlug: p.slug,
+      brand: p.brand,
+      thumbnail: p.thumbnail,
+      categoryName: p.categoryName || p.categorySlug || 'Công nghệ',
+      categorySlug: p.categorySlug || 'laptop',
+      price: p.price,
+      totalStock,
+      stockStatus,
+      branchesStock,
+    };
+  });
+
+  if (filters?.category && filters.category !== 'all') {
+    items = items.filter((item) => item.categorySlug === filters.category);
+  }
+  if (filters?.search && filters.search.trim()) {
+    const q = filters.search.toLowerCase().trim();
+    items = items.filter(
+      (item) =>
+        item.productName.toLowerCase().includes(q) ||
+        item.brand.toLowerCase().includes(q) ||
+        item.productSlug.toLowerCase().includes(q)
+    );
+  }
+  if (filters?.status && filters.status !== 'all') {
+    items = items.filter((item) => item.stockStatus === filters.status);
+  }
+  if (filters?.branchId && filters.branchId !== 'all') {
+    items = items.map((item) => ({
+      ...item,
+      branchesStock: item.branchesStock.filter((b) => b.branchId === filters.branchId),
+    }));
+  }
+
+  const allItemsStock = FALLBACK_PRODUCTS.map((p) => {
+    const total = FALLBACK_BRANCHES.reduce((sum, b) => sum + getLocalStock(p.id, b.id), 0);
+    return total;
+  });
+
+  const totalStockUnits = allItemsStock.reduce((sum, val) => sum + val, 0);
+  const totalProducts = FALLBACK_PRODUCTS.length;
+  const lowStockCount = allItemsStock.filter((t) => t > 0 && t <= 5).length;
+  const outOfStockCount = allItemsStock.filter((t) => t === 0).length;
+
+  const branchSummaries = FALLBACK_BRANCHES.map((b) => {
+    let bUnits = 0;
+    let bLow = 0;
+    let bOut = 0;
+
+    FALLBACK_PRODUCTS.forEach((p) => {
+      const q = getLocalStock(p.id, b.id);
+      bUnits += q;
+      if (q === 0) bOut++;
+      else if (q <= 3) bLow++;
+    });
+
+    return {
+      branchId: b.id,
+      branchName: b.name,
+      city: b.city,
+      totalUnits: bUnits,
+      lowStockCount: bLow,
+      outOfStockCount: bOut,
+    };
+  });
+
+  return {
+    summary: {
+      totalStockUnits,
+      totalProducts,
+      lowStockCount,
+      outOfStockCount,
+      branchSummaries,
+    },
+    branches: FALLBACK_BRANCHES,
+    items,
+  };
+}
+
+export async function updateInventoryStock(
+  payload: UpdateInventoryPayload
+): Promise<ApiResponse<any>> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/inventory`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (json.success) return json;
+    throw new Error(json.error || 'Lỗi cập nhật tồn kho');
+  } catch (err: any) {
+    console.warn('[API] updateInventoryStock fallback:', err);
+    localInventoryStockMap.set(`${payload.productId}:${payload.branchId}`, payload.quantity);
+    return {
+      success: true,
+      message: 'Cập nhật số lượng tồn kho thành công (Offline Mode).',
+      data: payload,
+    };
+  }
+}
+
+export async function transferInventoryStock(
+  payload: TransferStockPayload
+): Promise<ApiResponse<any>> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/inventory/transfer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (json.success) return json;
+    throw new Error(json.error || 'Lỗi chuyển kho');
+  } catch (err: any) {
+    console.warn('[API] transferInventoryStock fallback:', err);
+    const fromKey = `${payload.productId}:${payload.fromBranchId}`;
+    const toKey = `${payload.productId}:${payload.toBranchId}`;
+    const currentFrom = getLocalStock(payload.productId, payload.fromBranchId);
+    if (currentFrom < payload.quantity) {
+      return {
+        success: false,
+        error: `Kho xuất chỉ còn ${currentFrom} máy, không đủ ${payload.quantity} để chuyển.`,
+      };
+    }
+    const currentTo = getLocalStock(payload.productId, payload.toBranchId);
+    localInventoryStockMap.set(fromKey, currentFrom - payload.quantity);
+    localInventoryStockMap.set(toKey, currentTo + payload.quantity);
+    return {
+      success: true,
+      message: `Chuyển kho thành công: đã điều chuyển ${payload.quantity} thiết bị.`,
+      data: payload,
+    };
+  }
+}
+
 
 
 

@@ -7,6 +7,7 @@ import branchRoutes from './branch.routes';
 import knowledgeRoutes from './knowledge.routes';
 import chatRoutes from './chat.routes';
 import reviewRoutes from './review.routes';
+import inventoryRoutes from './inventory.routes';
 
 const apiRouter = Router();
 
@@ -18,6 +19,7 @@ apiRouter.use('/branches', branchRoutes);
 apiRouter.use('/knowledge', knowledgeRoutes);
 apiRouter.use('/chat', chatRoutes);
 apiRouter.use('/reviews', reviewRoutes);
+apiRouter.use('/inventory', inventoryRoutes);
 
 export default apiRouter;
 

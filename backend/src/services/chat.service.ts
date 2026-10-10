@@ -7,6 +7,8 @@ import {
   trackOrder,
   filterProducts,
   getProductDetails,
+  getProductReviewsTool,
+  checkReviewEligibilityTool,
   executeAiTool,
   formatVND,
   normalizeText,
@@ -14,6 +16,7 @@ import {
   OrderTrackResult,
   ProductFilterResult,
   ProductDetailResult,
+  ProductReviewsResult,
 } from './ai-tools.service';
 
 dotenv.config();
@@ -23,12 +26,10 @@ const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 // Danh sách các model ưu tiên thử nghiệm (fallback nếu gặp 503/429 tạm thời)
 const CANDIDATE_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
   'gemini-1.5-flash',
-  'gemini-3.5-flash',
-  'gemini-flash-latest',
-  'gemini-3.8-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-pro',
+  'gemini-2.0-flash-exp',
 ];
 
 export interface ChatHistoryItem {
@@ -46,7 +47,7 @@ export interface ChatResponseData {
   reply: string;
   citations: string[];
   cards?: {
-    type: 'products' | 'order' | 'inventory';
+    type: 'products' | 'order' | 'inventory' | 'reviews';
     data: any;
   };
   toolUsed?: string;
@@ -71,7 +72,15 @@ NGUYÊN TẮC BẮT BUỘC:
 7. TUYỆT ĐỐI KHÔNG XUẤT RA DỮ LIỆU NỘI BỘ HAY CHECKLIST:
 - CHỈ xuất ra đúng nội dung câu trả lời tư vấn gửi đến khách hàng.
 - Tuyệt đối KHÔNG in ra các nhãn kỹ thuật nội bộ như "[Tài liệu: ...]", "[Mục: ...]", "Độ khớp: ...%", hoặc các đoạn code/tag debug thô.
-- Tuyệt đối KHÔNG in ra bất kỳ dòng suy nghĩ, checklist, tự kiểm tra, self-reflection (như "technical metadata printed", "Checked", "Suggest next step at end: Checked", "Verified",...).`;
+- Tuyệt đối KHÔNG in ra bất kỳ dòng suy nghĩ, checklist, tự kiểm tra, self-reflection (như "technical metadata printed", "Checked", "Suggest next step at end: Checked", "Verified",...).
+8. CHÍNH SÁCH VÀ HƯỚNG DẪN ĐÁNH GIÁ SẢN PHẨM (VERIFIED PURCHASE):
+- Điều kiện đánh giá: Chỉ những khách hàng đã mua hàng và đơn hàng có trạng thái "Đã giao hàng" (delivered) mới có quyền gửi đánh giá sản phẩm. Điều này nhằm đảm bảo 100% đánh giá là từ người dùng thực tế và khách quan.
+- Xác thực: Khi gửi đánh giá, khách hàng cần nhập Mã đơn hàng (ví dụ: #BK-1024) và Số điện thoại đã đặt hàng để hệ thống xác thực.
+- 3 cách thực hiện đánh giá trên website:
+  1) Bấm vào nút "⭐ Đánh giá" trên thanh menu Header hoặc ở chân trang Footer.
+  2) Tra cứu vận đơn tại cửa sổ "Tra cứu đơn hàng" -> với các đơn hàng đã giao thành công, sẽ xuất hiện nút "⭐ Đánh giá sản phẩm".
+  3) Vào trực tiếp trang chi tiết sản phẩm (/products/[slug]) -> cuộn xuống mục "Đánh giá từ khách hàng" -> bấm "Gửi đánh giá cho sản phẩm này".
+- Thang điểm: Từ 1 đến 5 sao kèm bình luận cảm nhận chân thực. Mỗi sản phẩm trong một đơn hàng chỉ được đánh giá 1 lần để tránh spam.`;
 
 /**
  * Làm sạch câu trả lời của AI: Loại bỏ triệt để các nhãn kỹ thuật, nhãn debug,
@@ -125,11 +134,27 @@ class ChatService {
    * Phân tích ý định người dùng để tiền xử lý công cụ (Deterministic Intent Parser)
    */
   private detectIntent(message: string): {
-    intent: 'track_order' | 'check_inventory' | 'filter_products' | 'product_details' | 'general';
+    intent:
+      | 'track_order'
+      | 'check_inventory'
+      | 'filter_products'
+      | 'product_details'
+      | 'check_review_eligibility'
+      | 'product_reviews'
+      | 'general';
     extracted: any;
   } {
     const text = message.trim();
     const norm = normalizeText(text);
+
+    // 0. Kiểm tra từ khóa Đánh giá / Review
+    const isReviewKeyword =
+      norm.includes('danh gia') ||
+      norm.includes('review') ||
+      norm.includes('nhan xet') ||
+      norm.includes('sao') ||
+      norm.includes('feedback') ||
+      norm.includes('cham diem');
 
     // 1. Kiểm tra ý định Tra cứu đơn hàng (#BK-xxxx hoặc SĐT hoặc từ khóa đơn hàng)
     const isOrderKeyword =
@@ -144,13 +169,125 @@ class ChatService {
       norm.includes('da giao chua') ||
       norm.includes('ma van don');
 
-    // Tìm mã đơn hàng (#BK-xxxx, BK-xxxx, BKxxxx, hoặc 4 chữ số khi có từ khóa đơn hàng)
+    // Tìm mã đơn hàng (#BK-xxxx, BK-xxxx, BKxxxx, hoặc 4 chữ số khi có từ khóa đơn hàng/đánh giá)
     const orderCodeMatch =
       text.match(/#?BK[-_ ]?\d{3,6}/i) ||
-      (isOrderKeyword ? text.match(/\b\d{4}\b/) : null);
+      (isOrderKeyword || isReviewKeyword ? text.match(/\b\d{4}\b/) : null);
 
     // Tìm số điện thoại (10 chữ số bắt đầu bằng 0 hoặc +84)
     const phoneMatch = text.match(/(?:\+?84|0)(?:\d{9}|\d{8})\b/);
+
+    // 0.1. Nếu có từ khóa đánh giá kết hợp mã đơn hàng hoặc SĐT -> Kiểm tra điều kiện đánh giá đơn
+    if (isReviewKeyword && (orderCodeMatch || (norm.includes('don') && phoneMatch))) {
+      const code = orderCodeMatch ? orderCodeMatch[0].replace(/[^0-9]/g, '') : undefined;
+      return {
+        intent: 'check_review_eligibility',
+        extracted: {
+          orderCode: code ? `#BK-${code}` : undefined,
+          phone: phoneMatch ? phoneMatch[0] : undefined,
+        },
+      };
+    }
+
+    // 0.2. Nếu có từ khóa đánh giá / review
+    if (isReviewKeyword) {
+      // 0.2.1. Kiểm tra xem có phải câu hỏi về chính sách, quy trình, cách thức đánh giá chung không
+      const isGeneralPolicy =
+        norm.includes('lam sao') ||
+        norm.includes('the nao') ||
+        norm.includes('ra sao') ||
+        norm.includes('nhu the nao') ||
+        norm.includes('cach') ||             // "cách để đánh giá", "cách đánh giá", "có cách nào đánh giá"
+        norm.includes('quy trinh') ||        // "quy trình", "quy trình thế nào", "quy trình đánh giá"
+        norm.includes('cac buoc') ||         // "các bước đánh giá"
+        norm.includes('buoc nao') ||
+        norm.includes('huong dan') ||        // "hướng dẫn đánh giá"
+        norm.includes('chinh sach') ||       // "chính sách đánh giá"
+        norm.includes('dieu kien') ||        // "điều kiện đánh giá"
+        norm.includes('ai duoc') ||          // "ai được đánh giá"
+        norm.includes('nut danh gia') ||
+        norm.includes('khong danh gia duoc') ||
+        norm.includes('chua danh gia duoc') ||
+        norm.includes('o dau') ||            // "đánh giá ở đâu"
+        norm.includes('cho nao') ||          // "ở chỗ nào"
+        norm.includes('muc nao') ||          // "vào mục nào"
+        norm.includes('muon danh gia') ||    // "tôi muốn đánh giá"
+        norm.includes('viet danh gia') ||
+        norm.includes('gui danh gia');
+
+      if (isGeneralPolicy) {
+        return { intent: 'general', extracted: null };
+      }
+
+      // 0.2.2. Tìm sản phẩm khớp trong danh mục
+      const matched = seedProducts.find((p) => {
+        const pNameNorm = normalizeText(p.name);
+        const pSlugClean = normalizeText(p.slug).replace(/-/g, ' ');
+        if (norm.includes(pNameNorm) || norm.includes(pSlugClean)) return true;
+
+        // Trích xuất các từ khóa đặc trưng của dòng máy
+        const coreWords = pNameNorm
+          .split(' ')
+          .filter(
+            (w) =>
+              !['apple', 'asus', 'dell', 'lenovo', 'acer', 'samsung', 'sony', 'logitech', 'ram', 'ssd', 'gb', 'tb', '16gb', '512gb', '1tb', '32gb'].includes(w) &&
+              w.length >= 2
+          );
+
+        const matchCount = coreWords.filter((w) => norm.includes(w)).length;
+        const brandOrSeriesMatched =
+          (norm.includes('macbook') && pNameNorm.includes('macbook')) ||
+          (norm.includes('iphone') && pNameNorm.includes('iphone')) ||
+          (norm.includes('dell') && pNameNorm.includes('dell')) ||
+          (norm.includes('rog') && pNameNorm.includes('rog')) ||
+          (norm.includes('s24') && pNameNorm.includes('s24')) ||
+          (norm.includes('sony') && pNameNorm.includes('sony')) ||
+          (norm.includes('logitech') && pNameNorm.includes('logitech')) ||
+          (norm.includes('keychron') && pNameNorm.includes('keychron'));
+
+        return matchCount >= Math.min(2, coreWords.length) && brandOrSeriesMatched;
+      });
+
+      if (matched) {
+        return {
+          intent: 'product_reviews',
+          extracted: {
+            productName: matched.name,
+          },
+        };
+      }
+
+      // Lọc bỏ các từ thừa để lấy tên sản phẩm nếu người dùng hỏi "đánh giá về..."
+      let cleanProdName = text;
+      const reviewRemovals = [
+        /(cho (mình|em|tôi|khách|quý khách))?\s*(xem|hỏi|xin|biết)?\s*/gi,
+        /(đánh giá|review|nhận xét|feedback|phản hồi|cảm nhận)\s*/gi,
+        /(về|cho|của|chiếc|máy|sản phẩm|mẫu)\s*/gi,
+        /(thế nào|ra sao|sao|tốt không|có tốt không|ổn không|được không|với|ạ|hả|hở|nhé|nhỉ|nha|em|shop|ad)\s*/gi,
+      ];
+      for (const rx of reviewRemovals) {
+        cleanProdName = cleanProdName.replace(rx, ' ');
+      }
+      cleanProdName = cleanProdName.replace(/\s+/g, ' ').trim();
+
+      // Chỉ kích hoạt tra cứu đánh giá sản phẩm nếu có từ khóa công nghệ thực tế
+      const hasTechKeywords = [
+        'laptop', 'may tinh', 'dien thoai', 'smartphone', 'macbook', 'iphone', 'dell', 'asus',
+        'lenovo', 'acer', 'samsung', 'sony', 'logitech', 'keychron', 'tai nghe', 'chuot',
+        'ban phim', 's24', 'rog', 'zenbook', 'airpod', 'headphone', 'mouse', 'keyboard'
+      ].some((k) => norm.includes(k));
+
+      if (hasTechKeywords && cleanProdName.length >= 3) {
+        return {
+          intent: 'product_reviews',
+          extracted: {
+            productName: cleanProdName,
+          },
+        };
+      }
+
+      return { intent: 'general', extracted: null };
+    }
 
     if (orderCodeMatch || (isOrderKeyword && phoneMatch)) {
       const code = orderCodeMatch ? orderCodeMatch[0].replace(/[^0-9]/g, '') : undefined;
@@ -352,7 +489,27 @@ class ChatService {
     // 1. Phân tích ý định & kích hoạt AI Tool
     const detected = this.detectIntent(message);
 
-    if (detected.intent === 'check_inventory') {
+    if (detected.intent === 'check_review_eligibility') {
+      toolUsed = 'checkReviewEligibility';
+      const elig = await checkReviewEligibilityTool(detected.extracted);
+      toolResultData = elig;
+      if (elig.found) {
+        cardPayload = {
+          type: 'order',
+          data: elig,
+        };
+      }
+    } else if (detected.intent === 'product_reviews') {
+      toolUsed = 'getProductReviews';
+      const rev = await getProductReviewsTool(detected.extracted);
+      toolResultData = rev;
+      if (rev.found && rev.product) {
+        cardPayload = {
+          type: 'reviews',
+          data: rev,
+        };
+      }
+    } else if (detected.intent === 'check_inventory') {
       toolUsed = 'checkInventory';
       const inv = await checkInventory(detected.extracted);
       toolResultData = inv;
@@ -398,7 +555,16 @@ class ChatService {
     let ragContextText = '';
     let matchedRagChunks: SearchResult[] = [];
     try {
-      const ragResults = await ragService.search(message, 3);
+      // Nếu câu hỏi ngắn mang tính chất hỏi tiếp (follow-up), kết hợp với câu hỏi gần nhất của người dùng
+      let searchQuery = message;
+      if (history && history.length > 0 && message.trim().split(/\s+/).length <= 6) {
+        const lastUserMsg = [...history].reverse().find((h) => h.role === 'user');
+        if (lastUserMsg && lastUserMsg.content) {
+          searchQuery = `${lastUserMsg.content} ${message}`;
+        }
+      }
+
+      const ragResults = await ragService.search(searchQuery, 3);
       matchedRagChunks = ragResults.filter((r) => r.score >= 0.2);
 
       if (matchedRagChunks.length > 0) {
@@ -434,7 +600,7 @@ Hãy đưa ra câu trả lời trực tiếp cho khách hàng (chỉ xuất lờ
 
     // 4. Gọi Gemini để tổng hợp câu trả lời
     let replyText = '';
-    let usedModel = 'gemini-3.8-flash';
+    let usedModel = 'gemini-1.5-flash';
 
     try {
       const genResult = await this.generateWithFallback(userPromptWithData, SYSTEM_INSTRUCTION);
@@ -445,7 +611,37 @@ Hãy đưa ra câu trả lời trực tiếp cho khách hàng (chỉ xuất lờ
 
       // Smart Fallback nếu Gemini API tạm gián đoạn (503/Quota)
       if (toolResultData) {
-        if (toolUsed === 'checkInventory') {
+        if (toolUsed === 'getProductReviews') {
+          if (toolResultData.found && toolResultData.product) {
+            const p = toolResultData.product;
+            replyText = `Dạ chào anh/chị! Dưới đây là thông tin đánh giá thực tế từ khách hàng đã mua **${p.name}** tại BK-Store:\n\n`;
+            replyText += `• **Điểm trung bình:** ⭐ **${toolResultData.averageRating}/5 sao** (${toolResultData.totalReviews} lượt đánh giá thực tế)\n`;
+            if (toolResultData.reviews && toolResultData.reviews.length > 0) {
+              replyText += `• **Nhận xét tiêu biểu từ khách hàng:**\n`;
+              replyText += toolResultData.reviews
+                .map((r: any) => `  - ⭐ ${r.rating}/5 — **${r.customerName}**: "${r.comment}"`)
+                .join('\n') + '\n';
+            }
+            replyText += `\n${toolResultData.howToReview}\n\nAnh/chị có muốn em tư vấn chi tiết hơn về cấu hình máy này không ạ?`;
+          } else if (matchedRagChunks && matchedRagChunks.length > 0) {
+            const topChunk = matchedRagChunks[0].chunk;
+            const cleanContent = topChunk.content
+              .replace(/\[Tài liệu:.*?\]/g, '')
+              .replace(/\[Mục:.*?\]/g, '')
+              .replace(/^#+\s+/gm, '')
+              .trim();
+            const paragraphs = cleanContent
+              .split('\n\n')
+              .filter((p) => p.trim().length > 0)
+              .slice(0, 3)
+              .join('\n\n');
+            replyText = `Dạ em chào anh/chị! Về hướng dẫn và quy trình đánh giá sản phẩm tại BK-Store, em xin phép thông tin chi tiết đến anh/chị như sau:\n\n${paragraphs}\n\nAnh/chị có thể bấm nút "⭐ Đánh giá" trên thanh menu Header để gửi nhận xét bất kỳ lúc nào nhé!`;
+          } else {
+            replyText = `Dạ chào anh/chị! ${toolResultData.message}\n\n${toolResultData.howToReview || ''}`;
+          }
+        } else if (toolUsed === 'checkReviewEligibility') {
+          replyText = `Dạ chào anh/chị! ${toolResultData.message}`;
+        } else if (toolUsed === 'checkInventory') {
           replyText = `Dạ chào anh/chị! BK-Bot đã kiểm tra nhanh hệ thống kho:\n\n${toolResultData.message}\n\n`;
           if (toolResultData.branches && toolResultData.branches.length > 0) {
             replyText += toolResultData.branches

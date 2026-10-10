@@ -461,6 +461,102 @@ const tests: TestCase[] = [
       }
     },
   },
+  {
+    name: '23. Get Inventory Overview (/api/inventory)',
+    run: async () => {
+      const res = await fetch(`${BASE_URL}/api/inventory`);
+      if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}`);
+      const body = await res.json();
+      if (!body.success || !body.data || !body.data.summary || !body.data.items) {
+        throw new Error('Invalid inventory overview response format');
+      }
+      if (body.data.items.length === 0 || body.data.summary.totalStockUnits <= 0) {
+        throw new Error('Expected items and total stock units in inventory overview');
+      }
+      if (!body.data.branches || body.data.branches.length !== 3) {
+        throw new Error('Expected 3 showroom branches in inventory overview');
+      }
+    },
+  },
+  {
+    name: '24. Update Branch Stock Quantity (PUT /api/inventory)',
+    run: async () => {
+      const listRes = await fetch(`${BASE_URL}/api/inventory`);
+      const listBody = await listRes.json();
+      const firstItem = listBody.data.items[0];
+      const targetBranch = firstItem.branchesStock[0];
+
+      const updateRes = await fetch(`${BASE_URL}/api/inventory`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: firstItem.productId,
+          branchId: targetBranch.branchId,
+          quantity: 25,
+        }),
+      });
+
+      if (updateRes.status !== 200) throw new Error(`Expected status 200, got ${updateRes.status}`);
+      const updateBody = await updateRes.json();
+      if (!updateBody.success || updateBody.data.quantity !== 25) {
+        throw new Error('Inventory update response mismatch');
+      }
+    },
+  },
+  {
+    name: '25. Inter-branch Stock Transfer (POST /api/inventory/transfer)',
+    run: async () => {
+      const listRes = await fetch(`${BASE_URL}/api/inventory`);
+      const listBody = await listRes.json();
+      const firstItem = listBody.data.items[0];
+      const fromBranch = firstItem.branchesStock[0];
+      const toBranch = firstItem.branchesStock[1];
+
+      const transferRes = await fetch(`${BASE_URL}/api/inventory/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: firstItem.productId,
+          fromBranchId: fromBranch.branchId,
+          toBranchId: toBranch.branchId,
+          quantity: 2,
+          note: 'Điều chuyển mẫu kiểm thử',
+        }),
+      });
+
+      if (transferRes.status !== 200) throw new Error(`Expected status 200, got ${transferRes.status}`);
+      const transferBody = await transferRes.json();
+      if (!transferBody.success || transferBody.data.transferredQuantity !== 2) {
+        throw new Error('Stock transfer response mismatch');
+      }
+    },
+  },
+  {
+    name: '26. Reject Over-transfer Beyond Branch Stock',
+    run: async () => {
+      const listRes = await fetch(`${BASE_URL}/api/inventory`);
+      const listBody = await listRes.json();
+      const firstItem = listBody.data.items[0];
+      const fromBranch = firstItem.branchesStock[0];
+      const toBranch = firstItem.branchesStock[1];
+
+      const transferRes = await fetch(`${BASE_URL}/api/inventory/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: firstItem.productId,
+          fromBranchId: fromBranch.branchId,
+          toBranchId: toBranch.branchId,
+          quantity: 999999, // Excessive quantity
+          note: 'Điều chuyển quá số lượng tồn',
+        }),
+      });
+
+      if (transferRes.status !== 400) {
+        throw new Error(`Expected status 400 for excessive stock transfer, got ${transferRes.status}`);
+      }
+    },
+  },
 ];
 
 

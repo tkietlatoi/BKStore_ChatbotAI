@@ -110,7 +110,7 @@ export interface ApiResponse<T> {
 }
 
 export interface ChatMessageCard {
-  type: 'products' | 'order' | 'inventory';
+  type: 'products' | 'order' | 'inventory' | 'reviews';
   data: any;
 }
 
@@ -151,5 +151,69 @@ export interface CreateReviewPayload {
   productId: string;
   rating: number;
   comment: string;
+}
+
+export type InventoryStockStatus = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
+
+export interface BranchStockDetail {
+  branchId: string;
+  branchName: string;
+  city: string;
+  address: string;
+  phone: string;
+  quantity: number;
+  status: 'Còn hàng' | 'Sắp hết hàng' | 'Hết hàng';
+  updatedAt?: string;
+}
+
+export interface ProductInventoryItem {
+  productId: string;
+  productName: string;
+  productSlug: string;
+  brand: string;
+  thumbnail: string;
+  categoryName: string;
+  categorySlug: string;
+  price: number;
+  totalStock: number;
+  stockStatus: 'in_stock' | 'low_stock' | 'out_of_stock';
+  branchesStock: BranchStockDetail[];
+}
+
+export interface BranchSummary {
+  branchId: string;
+  branchName: string;
+  city: string;
+  totalUnits: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+}
+
+export interface InventoryOverviewSummary {
+  totalStockUnits: number;
+  totalProducts: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  branchSummaries: BranchSummary[];
+}
+
+export interface InventoryOverviewData {
+  summary: InventoryOverviewSummary;
+  branches: Branch[];
+  items: ProductInventoryItem[];
+}
+
+export interface UpdateInventoryPayload {
+  productId: string;
+  branchId: string;
+  quantity: number;
+}
+
+export interface TransferStockPayload {
+  productId: string;
+  fromBranchId: string;
+  toBranchId: string;
+  quantity: number;
+  note?: string;
 }
 

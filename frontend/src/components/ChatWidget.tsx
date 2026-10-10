@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Store,
   Eye,
+  Star,
 } from 'lucide-react';
 import { ChatMessage, Product } from '@/types';
 import { sendChatMessage, fetchProductBySlug } from '@/lib/api';
@@ -61,7 +62,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
       id: 'msg-welcome',
       role: 'assistant',
       content:
-        'Xin chào! Tôi là **BK-Bot**, trợ lý AI kỹ thuật của BK-Store.\n\nTôi có thể giúp bạn:\n• 💻 **Tư vấn cấu hình** laptop, điện thoại theo nhu cầu & túi tiền\n• 🏢 **Kiểm tra tồn kho thực tế** tại 3 chi nhánh (Hà Nội, TP.HCM, Đà Nẵng)\n• 🚚 **Tra cứu vận đơn & tiến trình đơn hàng** theo mã đơn\n• 📖 **Giải đáp chính sách** bảo hành 1 đổi 1 trong 30 ngày, đổi trả & trả góp\n\nBạn đang quan tâm đến sản phẩm hoặc cần hỗ trợ gì ạ?',
+        'Xin chào! Tôi là **BK-Bot**, trợ lý AI kỹ thuật của BK-Store.\n\nTôi có thể giúp bạn:\n• 💻 **Tư vấn cấu hình** laptop, điện thoại theo nhu cầu & túi tiền\n• 🏢 **Kiểm tra tồn kho thực tế** tại 3 chi nhánh (Hà Nội, TP.HCM, Đà Nẵng)\n• 🚚 **Tra cứu vận đơn & tiến trình đơn hàng** theo mã đơn\n• ⭐ **Xem đánh giá thực tế & hướng dẫn đánh giá** đơn hàng đã giao\n• 📖 **Giải đáp chính sách** bảo hành 1 đổi 1 trong 30 ngày, đổi trả & trả góp\n\nBạn đang quan tâm đến sản phẩm hoặc cần hỗ trợ gì ạ?',
       timestamp: new Date().toISOString(),
     },
   ]);
@@ -76,8 +77,8 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
   const quickPrompts = [
     'Tư vấn laptop AI & Lập trình 30-50 triệu',
     'MacBook Air M3 ở Cầu Giấy còn hàng không?',
-    'Kiểm tra đơn hàng mẫu #BK-1024',
-    'Chính sách đổi mới 30 ngày tại BK-Store',
+    'Đánh giá thực tế về MacBook Air M3',
+    'Làm sao để đánh giá sản phẩm đã mua?',
   ];
 
   const handleAddToCart = (e: React.MouseEvent, prod: any) => {
@@ -440,15 +441,26 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                       <div className="text-[11px] space-y-1 text-slate-600">
                         <div className="flex justify-between">
                           <span>Khách hàng:</span>
-                          <span className="font-semibold text-slate-800">{msg.cards.data.customerName}</span>
+                          <span className="font-semibold text-slate-800">{msg.cards.data.customerName || 'Quý khách'}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Tổng tiền:</span>
-                          <span className="font-bold text-blue-600">{msg.cards.data.formattedTotal}</span>
-                        </div>
-                        <div className="bg-slate-50 p-2 rounded-lg text-[10px] text-slate-700 mt-1 border border-slate-100">
-                          <span className="font-semibold">Lộ trình:</span> {msg.cards.data.trackingInfo}
-                        </div>
+                        {msg.cards.data.formattedTotal && (
+                          <div className="flex justify-between">
+                            <span>Tổng tiền:</span>
+                            <span className="font-bold text-blue-600">{msg.cards.data.formattedTotal}</span>
+                          </div>
+                        )}
+                        {msg.cards.data.trackingInfo && (
+                          <div className="bg-slate-50 p-2 rounded-lg text-[10px] text-slate-700 mt-1 border border-slate-100">
+                            <span className="font-semibold">Lộ trình:</span> {msg.cards.data.trackingInfo}
+                          </div>
+                        )}
+                        {msg.cards.data.canReview && (
+                          <div className="bg-amber-50 border border-amber-200/80 p-2 rounded-lg text-[10px] text-amber-900 flex items-center justify-between mt-1">
+                            <span className="flex items-center gap-1 font-semibold">
+                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" /> Đủ điều kiện đánh giá sản phẩm (Verified)
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -480,7 +492,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                             <span
                               className={`px-1.5 py-0.5 rounded font-bold ${
                                 b.status === 'Còn hàng'
-                                  ? 'bg-emerald-100 text-emerald-800'
+                                    ? 'bg-emerald-100 text-emerald-800'
                                   : b.status === 'Sắp hết hàng'
                                   ? 'bg-amber-100 text-amber-800'
                                   : 'bg-rose-100 text-rose-800'
@@ -491,6 +503,79 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* 4. PRODUCT REVIEWS CARD */}
+                  {msg.cards?.type === 'reviews' && msg.cards.data && (
+                    <div className="bg-white border border-amber-200/90 rounded-xl p-3 shadow-xs space-y-2.5">
+                      <div className="flex items-center justify-between pb-2 border-b border-amber-100">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="p-1 rounded-md bg-amber-50 text-amber-600 shrink-0">
+                            <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
+                          </div>
+                          <div className="min-w-0">
+                            <h5 className="font-bold text-xs text-slate-900 truncate" title={msg.cards.data.product?.name}>
+                              {msg.cards.data.product?.name || 'Đánh giá sản phẩm'}
+                            </h5>
+                            <span className="text-[10px] text-slate-500">
+                              {msg.cards.data.totalReviews} lượt đánh giá thực tế từ người mua
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 shrink-0">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                          <span className="text-xs font-bold">{msg.cards.data.averageRating}</span>
+                          <span className="text-[10px] text-amber-600">/ 5</span>
+                        </div>
+                      </div>
+
+                      {/* Customer quotes */}
+                      {Array.isArray(msg.cards.data.reviews) && msg.cards.data.reviews.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            Nhận xét từ khách đã mua
+                          </div>
+                          {msg.cards.data.reviews.slice(0, 2).map((rev: any, idx: number) => (
+                            <div
+                              key={rev.id || idx}
+                              className="p-2 rounded-lg bg-slate-50 border border-slate-100 text-[11px] space-y-1"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold text-slate-800 text-[10px]">
+                                  {rev.customerName || 'Khách hàng'}
+                                </span>
+                                <div className="flex items-center gap-0.5">
+                                  {[...Array(5)].map((_, i) => (
+                                    <Star
+                                      key={i}
+                                      className={`w-2.5 h-2.5 ${
+                                        i < rev.rating
+                                          ? 'fill-amber-400 text-amber-500'
+                                          : 'fill-slate-200 text-slate-200'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                              <p className="text-slate-600 text-[10px] italic line-clamp-2">
+                                "{rev.comment}"
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Link to product detail page */}
+                      {msg.cards.data.product?.slug && (
+                        <Link
+                          href={`/products/${msg.cards.data.product.slug}#reviews`}
+                          className="w-full py-1.5 px-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                        >
+                          <span>Xem chi tiết đánh giá & Viết nhận xét</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </Link>
+                      )}
                     </div>
                   )}
 

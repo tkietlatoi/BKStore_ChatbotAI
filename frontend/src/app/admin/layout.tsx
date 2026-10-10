@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ShoppingBag,
   Laptop,
+  Boxes,
   Database,
   ArrowLeft,
   ShieldCheck,
@@ -37,6 +38,12 @@ export default function AdminLayout({
       href: '/admin/products',
       label: 'Sản phẩm & Cấu hình',
       icon: Laptop,
+      exact: false,
+    },
+    {
+      href: '/admin/inventory',
+      label: 'Quản lý Kho & Tồn kho',
+      icon: Boxes,
       exact: false,
     },
     {
