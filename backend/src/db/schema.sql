@@ -130,3 +130,23 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc ON knowledge_chunks(document
 -- HNSW Vector index cho tìm kiếm Cosine Similarity cực nhanh
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_embedding 
 ON knowledge_chunks USING hnsw (embedding vector_cosine_ops);
+
+-- 9. REVIEWS TABLE (Đánh giá sản phẩm dành riêng cho đơn hàng đã giao thành công)
+CREATE TABLE IF NOT EXISTS reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    product_slug VARCHAR(255) NOT NULL,
+    order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+    order_code VARCHAR(20) NOT NULL,
+    customer_name VARCHAR(150) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(order_code, product_slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews(product_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_product_slug ON reviews(product_slug);
+CREATE INDEX IF NOT EXISTS idx_reviews_order ON reviews(order_code);
+

@@ -505,6 +505,7 @@ export const products: SeedProduct[] = [
 
 export const sampleOrders = [
   {
+    id: 'ord-1024',
     orderCode: '#BK-1024',
     customerName: 'Nguyễn Văn An',
     phone: '0912345678',
@@ -514,8 +515,10 @@ export const sampleOrders = [
     paymentMethod: 'COD',
     status: 'delivered',
     trackingInfo: 'Đơn hàng đã được giao thành công vào lúc 14:30 ngày 15/09/2026. Người nhận: Nguyễn Văn An.',
+    createdAt: '2026-09-15T14:30:00.000Z',
     items: [
       {
+        productId: 'p1000000-0000-0000-0000-000000000001',
         productSlug: 'macbook-air-m3-13-16gb-512gb',
         productName: 'Apple MacBook Air 13 M3 (16GB RAM / 512GB SSD)',
         quantity: 1,
@@ -525,6 +528,7 @@ export const sampleOrders = [
     ],
   },
   {
+    id: 'ord-2048',
     orderCode: '#BK-2048',
     customerName: 'Trần Thị Mai',
     phone: '0987654321',
@@ -534,8 +538,10 @@ export const sampleOrders = [
     paymentMethod: 'QR_PAY',
     status: 'shipping',
     trackingInfo: 'Kiện hàng đã rời kho trung chuyển Tân Bình lúc 08:15 sáng nay và đang trên đường giao hàng bởi shipper.',
+    createdAt: '2026-10-09T08:15:00.000Z',
     items: [
       {
+        productId: 'p1000000-0000-0000-0000-000000000008',
         productSlug: 'iphone-16-pro-max-256gb',
         productName: 'Apple iPhone 16 Pro Max 256GB Titan Tự Nhiên',
         quantity: 1,
@@ -543,6 +549,7 @@ export const sampleOrders = [
         price: 34490000,
       },
       {
+        productId: 'p1000000-0000-0000-0000-000000000015',
         productSlug: 'anker-prime-67w-gan-charger',
         productName: 'Củ sạc nhanh Anker 735 GaNPrime 65W (3 Cổng)',
         quantity: 1,
@@ -552,6 +559,7 @@ export const sampleOrders = [
     ],
   },
   {
+    id: 'ord-3072',
     orderCode: '#BK-3072',
     customerName: 'Lê Hoàng Long',
     phone: '0905123987',
@@ -561,8 +569,10 @@ export const sampleOrders = [
     paymentMethod: 'COD',
     status: 'pending',
     trackingInfo: 'Đơn hàng đã được tiếp nhận trên hệ thống lúc 10:00 sáng. Quản trị viên đang kiểm tra tồn kho tại chi nhánh Đà Nẵng để đóng gói.',
+    createdAt: '2026-10-10T10:00:00.000Z',
     items: [
       {
+        productId: 'p1000000-0000-0000-0000-000000000013',
         productSlug: 'logitech-mx-master-3s',
         productName: 'Chuột Không Dây Logitech MX Master 3S',
         quantity: 1,

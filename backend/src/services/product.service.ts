@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { pool, checkDbConnection } from '../config/db';
-import { products as fallbackProducts, branches as fallbackBranches } from '../db/seedData';
+import { products as fallbackProducts, branches as fallbackBranches, categories as fallbackCategories } from '../db/seedData';
 import { CreateProductInput, UpdateProductInput } from '../schemas/product.schema';
 
 export interface ProductFilterOptions {
@@ -15,11 +15,16 @@ export interface ProductFilterOptions {
 }
 
 // In-memory store for fallback mode when database is not connected
-let inMemoryProducts: any[] = fallbackProducts.map((p) => ({
-  ...p,
-  stockQuantity: (p as any).stockQuantity ?? (p as any).stock ?? 15,
-  stock: (p as any).stockQuantity ?? (p as any).stock ?? 15,
-}));
+let inMemoryProducts: any[] = fallbackProducts.map((p) => {
+  const cat = fallbackCategories.find((c) => c.slug === p.categorySlug);
+  return {
+    ...p,
+    categoryName: cat?.name || p.categorySlug,
+    category_name: cat?.name || p.categorySlug,
+    stockQuantity: (p as any).stockQuantity ?? (p as any).stock ?? 15,
+    stock: (p as any).stockQuantity ?? (p as any).stock ?? 15,
+  };
+});
 
 export const findProductByIdOrSlug = (idOrSlug: string) => {
   return inMemoryProducts.find((p) => p.id === idOrSlug || p.slug === idOrSlug) || null;

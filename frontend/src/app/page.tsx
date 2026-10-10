@@ -9,8 +9,10 @@ import { ProductCard } from '@/components/ProductCard';
 import { CartDrawer } from '@/components/CartDrawer';
 import { CheckoutModal } from '@/components/CheckoutModal';
 import { OrderTrackingModal } from '@/components/OrderTrackingModal';
+import { ReviewModal } from '@/components/ReviewModal';
 import { ChatWidget } from '@/components/ChatWidget';
 import { Footer } from '@/components/Footer';
+
 
 import { Brand, Category, Order, Product } from '@/types';
 import { fetchBrands, fetchCategories, fetchProducts } from '@/lib/api';
@@ -44,7 +46,9 @@ export default function HomePage() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+
 
   // Tracking pre-fill
   const [trackingInitialCode, setTrackingInitialCode] = useState<string>('');
@@ -210,8 +214,10 @@ export default function HomePage() {
           setTrackingInitialPhone('');
           setIsTrackingOpen(true);
         }}
+        onOpenReview={() => setIsReviewOpen(true)}
         onOpenChat={() => setIsChatOpen((prev) => !prev)}
       />
+
 
       {/* 2. Hero Section */}
       <Hero
@@ -514,6 +520,7 @@ export default function HomePage() {
           setTrackingInitialPhone('');
           setIsTrackingOpen(true);
         }}
+        onOpenReview={() => setIsReviewOpen(true)}
       />
 
       {/* 5. Modals & Slide-overs */}
@@ -539,6 +546,16 @@ export default function HomePage() {
         onClose={() => setIsTrackingOpen(false)}
         initialOrderCode={trackingInitialCode}
         initialPhone={trackingInitialPhone}
+        onOpenReviewModal={(code, phone, prodId) => {
+          setIsTrackingOpen(false);
+          setIsReviewOpen(true);
+        }}
+      />
+
+      {/* Order Review Modal */}
+      <ReviewModal
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
       />
 
       {/* Floating BK-Bot Chat Widget */}
@@ -550,3 +567,4 @@ export default function HomePage() {
     </div>
   );
 }
+

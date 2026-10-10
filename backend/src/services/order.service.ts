@@ -167,7 +167,21 @@ export const getAllOrders = async (options: OrderFilterOptions = {}) => {
 
   const isDbConnected = await checkDbConnection();
   if (!isDbConnected) {
-    let filtered = [...inMemoryOrders];
+    let filtered = inMemoryOrders.map((o, idx) => ({
+      ...o,
+      id: o.id || `ord-${o.orderCode.replace(/^#/, '') || idx}`,
+      createdAt: o.createdAt || new Date(Date.now() - 3600000 * (idx + 1) * 6).toISOString(),
+      totalAmount: Number(o.totalAmount || 0),
+      items: (o.items || []).map((it: any) => ({
+        ...it,
+        productId: it.productId || it.productSlug,
+        productName: it.productName || it.productSlug || 'Thiết bị công nghệ',
+        quantity: Number(it.quantity || 1),
+        unitPrice: Number(it.unitPrice ?? it.price ?? 0),
+        price: Number(it.price ?? it.unitPrice ?? 0),
+      })),
+    }));
+
     if (options.status && options.status !== 'all') {
       filtered = filtered.filter((o) => o.status.toLowerCase() === options.status?.toLowerCase());
     }
@@ -183,6 +197,7 @@ export const getAllOrders = async (options: OrderFilterOptions = {}) => {
       },
     };
   }
+
 
   const conditions: string[] = [];
   const params: any[] = [];

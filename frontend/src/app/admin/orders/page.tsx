@@ -180,6 +180,16 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const formatOrderDate = (dateStr?: string | null) => {
+    if (!dateStr) return { date: 'Vừa tạo', time: '' };
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return { date: 'Vừa tạo', time: '' };
+    return {
+      date: d.toLocaleDateString('vi-VN'),
+      time: d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+    };
+  };
+
   const statusOptions: { id: string; label: string }[] = [
     { id: 'all', label: 'Tất cả đơn' },
     { id: 'pending', label: 'Chờ duyệt' },
@@ -188,6 +198,11 @@ export default function AdminOrdersPage() {
     { id: 'delivered', label: 'Đã giao' },
     { id: 'cancelled', label: 'Đã hủy' },
   ];
+
+  const getTabCount = (tabId: string) => {
+    if (tabId === 'all') return orders.length;
+    return orders.filter((o) => o.status === tabId).length;
+  };
 
   return (
     <div className="space-y-6">
@@ -213,9 +228,10 @@ export default function AdminOrdersPage() {
 
         <button
           onClick={loadOrders}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors self-start"
+          disabled={isLoading}
+          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-95 text-xs font-semibold shadow-xs transition-all self-start disabled:opacity-60"
         >
-          <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+          <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isLoading ? 'animate-spin text-blue-600' : ''}`} />
           <span>Làm mới dữ liệu</span>
         </button>
       </div>
@@ -228,13 +244,18 @@ export default function AdminOrdersPage() {
             <button
               key={tab.id}
               onClick={() => setStatusFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
                 statusFilter === tab.id
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
               }`}
             >
-              {tab.label}
+              <span>{tab.label}</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                statusFilter === tab.id ? 'bg-blue-700/60 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>
+                {getTabCount(tab.id)}
+              </span>
             </button>
           ))}
         </div>
@@ -281,13 +302,15 @@ export default function AdminOrdersPage() {
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-50/70 transition-colors">
+                filteredOrders.map((order) => {
+                  const { date, time } = formatOrderDate(order.createdAt);
+                  return (
+                  <tr key={order.id || order.orderCode} className="hover:bg-slate-50/70 transition-colors">
                     {/* Order Code & Date */}
                     <td className="px-5 py-4 font-mono">
                       <div className="font-bold text-blue-700 text-sm">{order.orderCode}</div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
-                        {new Date(order.createdAt).toLocaleDateString('vi-VN')} {new Date(order.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                        {date} {time}
                       </div>
                     </td>
 
@@ -312,6 +335,9 @@ export default function AdminOrdersPage() {
                             <div key={idx} className="truncate text-[11px] text-slate-700">
                               <span className="font-mono font-bold text-slate-500">x{item.quantity}</span>{' '}
                               <span>{item.productName || item.productId}</span>
+                              <span className="text-[10px] text-slate-400 ml-1 font-mono">
+                                ({formatPrice((item.unitPrice || item.price || 0) * item.quantity)})
+                              </span>
                             </div>
                           ))}
                           {order.items.length > 2 && (
@@ -413,8 +439,9 @@ export default function AdminOrdersPage() {
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
+                );
+              })
+            )}
             </tbody>
           </table>
         </div>

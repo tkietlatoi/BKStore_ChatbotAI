@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Search, ShoppingBag, Truck, Phone, Sparkles, X, ChevronDown, Layers } from 'lucide-react';
+import { Search, ShoppingBag, Truck, Phone, Sparkles, X, ChevronDown, Layers, Star } from 'lucide-react';
 import { useCartStore } from '@/store/cartStore';
 import { Brand } from '@/types';
 import { fetchBrands, FALLBACK_BRANDS } from '@/lib/api';
@@ -12,6 +12,7 @@ interface HeaderProps {
   onSearchChange: (q: string) => void;
   onOpenCart: () => void;
   onOpenTracking: () => void;
+  onOpenReview?: () => void;
   onOpenChat: () => void;
 }
 
@@ -20,8 +21,10 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   onOpenCart,
   onOpenTracking,
+  onOpenReview,
   onOpenChat,
 }) => {
+
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const totalItems = useCartStore((state) => state.getTotalItems());
   const [isCartJumping, setIsCartJumping] = useState(false);
@@ -215,6 +218,19 @@ export const Header: React.FC<HeaderProps> = ({
             <Truck className="w-4 h-4 text-blue-600" />
             <span className="hidden sm:inline">Tra cứu đơn</span>
           </button>
+
+          {/* Review Order Button */}
+          {onOpenReview && (
+            <button
+              onClick={onOpenReview}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 hover:text-amber-600 bg-slate-100/80 hover:bg-amber-50 rounded-xl transition-all cursor-pointer"
+              title="Đánh giá sản phẩm đã mua"
+            >
+              <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+              <span className="hidden md:inline">Đánh giá</span>
+            </button>
+          )}
+
 
           {/* Cart Button with Jumping Animation */}
           <button

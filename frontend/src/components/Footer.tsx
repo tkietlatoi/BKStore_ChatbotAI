@@ -6,9 +6,11 @@ import { ShieldCheck, Truck, Headphones, RotateCcw, Sparkles } from 'lucide-reac
 
 interface FooterProps {
   onOpenTracking: () => void;
+  onOpenReview?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onOpenTracking }) => {
+export const Footer: React.FC<FooterProps> = ({ onOpenTracking, onOpenReview }) => {
+
   return (
     <footer className="bg-slate-950 text-slate-400 text-xs border-t border-slate-800 mt-16">
       {/* Service Highlights Bar */}
@@ -114,11 +116,22 @@ export const Footer: React.FC<FooterProps> = ({ onOpenTracking }) => {
               <li>
                 <button
                   onClick={onOpenTracking}
-                  className="text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 font-medium"
+                  className="text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 font-medium cursor-pointer"
                 >
                   <span>→ Tra cứu tiến trình vận đơn</span>
                 </button>
               </li>
+              {onOpenReview && (
+                <li>
+                  <button
+                    onClick={onOpenReview}
+                    className="text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5 font-medium cursor-pointer"
+                  >
+                    <span>⭐ Đánh giá sản phẩm đã mua</span>
+                  </button>
+                </li>
+              )}
+
               <li><a href="#" className="hover:text-slate-200 transition-colors">Chính sách bảo hành 12-24 tháng</a></li>
               <li><a href="#" className="hover:text-slate-200 transition-colors">Chính sách giao hàng siêu tốc</a></li>
               <li><a href="#" className="hover:text-slate-200 transition-colors">Hướng dẫn thanh toán VietQR</a></li>

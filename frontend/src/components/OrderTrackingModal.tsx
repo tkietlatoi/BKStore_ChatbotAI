@@ -1,16 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Search, ShieldCheck, AlertCircle, Package, Truck, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { X, Search, ShieldCheck, AlertCircle, Package, Truck, CheckCircle2, Clock, XCircle, Star, Sparkles } from 'lucide-react';
 import { trackOrderApi } from '@/lib/api';
-import { Order, OrderStatus } from '@/types';
+import { Order, OrderItem, OrderStatus } from '@/types';
 import { formatPrice } from '@/lib/utils';
+import { ReviewModal } from './ReviewModal';
 
 interface OrderTrackingModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialOrderCode?: string;
   initialPhone?: string;
+  onOpenReviewModal?: (orderCode: string, phone: string, productId?: string) => void;
 }
 
 export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
@@ -18,16 +20,20 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
   onClose,
   initialOrderCode = '',
   initialPhone = '',
+  onOpenReviewModal,
 }) => {
   const [orderCode, setOrderCode] = useState(initialOrderCode);
   const [phone, setPhone] = useState(initialPhone);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [orderData, setOrderData] = useState<Order | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewTargetProdId, setReviewTargetProdId] = useState('');
 
   const handleSearch = React.useCallback(async (codeToSearch: string, phoneToSearch: string) => {
     setErrorMsg('');
     setOrderData(null);
+
 
     if (!codeToSearch.trim()) {
       setErrorMsg('Vui lòng nhập mã đơn hàng (ví dụ: BK-1024).');
@@ -250,9 +256,17 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
             {/* Items */}
             {orderData.items && orderData.items.length > 0 && (
               <div>
-                <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                  Danh sách sản phẩm trong đơn:
-                </h5>
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Danh sách sản phẩm trong đơn:
+                  </h5>
+                  {orderData.status === 'delivered' && (
+                    <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-emerald-600" />
+                      <span>Có thể đánh giá sản phẩm</span>
+                    </span>
+                  )}
+                </div>
                 <div className="divide-y divide-slate-100 text-xs">
                   {orderData.items.map((item, idx) => {
                     const itemUnitPrice = Number(item.unitPrice ?? item.price ?? 0);
@@ -260,20 +274,41 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                     const itemTotalPrice = itemUnitPrice * itemQty;
                     const displayName =
                       item.productName || item.productSlug || item.productId || 'Thiết bị công nghệ';
+                    const targetProd = item.productSlug || item.productId || '';
 
                     return (
-                      <div key={idx} className="py-2.5 flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
+                      <div key={idx} className="py-2.5 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded text-[11px] shrink-0">
                             x{itemQty}
                           </span>
-                          <span className="font-semibold text-slate-800">
+                          <span className="font-semibold text-slate-800 truncate">
                             {displayName}
                           </span>
                         </div>
-                        <span className="font-mono font-bold text-blue-700">
-                          {formatPrice(itemTotalPrice)}
-                        </span>
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          <span className="font-mono font-bold text-blue-700">
+                            {formatPrice(itemTotalPrice)}
+                          </span>
+                          {orderData.status === 'delivered' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onOpenReviewModal) {
+                                  onOpenReviewModal(orderData.orderCode, orderData.phone, targetProd);
+                                } else {
+                                  setReviewTargetProdId(targetProd);
+                                  setIsReviewModalOpen(true);
+                                }
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                              title="Đánh giá sản phẩm này"
+                            >
+                              <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                              <span>Đánh giá</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -292,6 +327,18 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
         )}
 
       </div>
+
+      {/* Review Modal embedded */}
+      {isReviewModalOpen && orderData && (
+        <ReviewModal
+          isOpen={isReviewModalOpen}
+          onClose={() => setIsReviewModalOpen(false)}
+          initialOrderCode={orderData.orderCode}
+          initialPhone={orderData.phone}
+          initialProductId={reviewTargetProdId}
+        />
+      )}
     </div>
   );
 };
+

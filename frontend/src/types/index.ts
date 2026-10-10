@@ -124,3 +124,32 @@ export interface ChatMessage {
   toolUsed?: string;
   timestamp: string;
 }
+
+export interface Review {
+  id: string;
+  productId: string;
+  productSlug?: string;
+  orderId?: string;
+  orderCode: string;
+  customerName: string;
+  phone?: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+
+export interface ProductReviewsData {
+  reviews: Review[];
+  totalReviews: number;
+  averageRating: number;
+  ratingBreakdown: Record<number, number>;
+}
+
+export interface CreateReviewPayload {
+  orderCode: string;
+  phone: string;
+  productId: string;
+  rating: number;
+  comment: string;
+}
+

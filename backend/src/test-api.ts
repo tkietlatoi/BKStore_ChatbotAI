@@ -381,7 +381,88 @@ const tests: TestCase[] = [
       }
     },
   },
+  {
+    name: '19. Get Product Reviews (/api/reviews/product/:slug)',
+    run: async () => {
+      const res = await fetch(`${BASE_URL}/api/reviews/product/macbook-air-m3-13-16gb-512gb`);
+      if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}`);
+      const body = await res.json();
+      if (!body.success || !Array.isArray(body.data?.reviews)) {
+        throw new Error('Failed to fetch product reviews or reviews is not an array');
+      }
+      if (typeof body.data.averageRating !== 'number') {
+        throw new Error('averageRating is missing or not a number');
+      }
+    },
+  },
+  {
+    name: '20. Reject Review When Order Status is Not Delivered (#BK-2048 is shipping)',
+    run: async () => {
+      const res = await fetch(`${BASE_URL}/api/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderCode: '#BK-2048',
+          phone: '0987654321',
+          productId: 'iphone-16-pro-max-256gb',
+          rating: 5,
+          comment: 'Chưa nhận được máy nhưng muốn thử đánh giá.',
+        }),
+      });
+      if (res.status !== 400) {
+        throw new Error(`Expected status 400 for non-delivered order review, got ${res.status}`);
+      }
+      const body = await res.json();
+      if (!body.error || !body.error.includes('giao thành công')) {
+        throw new Error(`Expected error message about delivered status, got ${body.error}`);
+      }
+    },
+  },
+  {
+    name: '21. Submit Review For Delivered Order (#BK-1024)',
+    run: async () => {
+      const res = await fetch(`${BASE_URL}/api/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderCode: '#BK-1024',
+          phone: '0912345678',
+          productId: 'macbook-air-m3-13-16gb-512gb',
+          rating: 5,
+          comment: 'Máy nguyên seal dùng cực mượt, màn hình đẹp và pin trâu 10/10.',
+        }),
+      });
+      if (res.status !== 201) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(`Expected status 201, got ${res.status}: ${JSON.stringify(body)}`);
+      }
+      const body = await res.json();
+      if (!body.success || body.data?.rating !== 5) {
+        throw new Error('Review submission response mismatch');
+      }
+    },
+  },
+  {
+    name: '22. Reject Duplicate Review For Same Item in Order (#BK-1024)',
+    run: async () => {
+      const res = await fetch(`${BASE_URL}/api/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderCode: '#BK-1024',
+          phone: '0912345678',
+          productId: 'macbook-air-m3-13-16gb-512gb',
+          rating: 4,
+          comment: 'Thử gửi lại đánh giá lần thứ 2 cho cùng sản phẩm.',
+        }),
+      });
+      if (res.status !== 400) {
+        throw new Error(`Expected status 400 for duplicate review, got ${res.status}`);
+      }
+    },
+  },
 ];
+
 
 const runAllTests = async () => {
   console.log('====================================================');
