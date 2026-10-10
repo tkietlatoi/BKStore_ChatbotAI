@@ -4,7 +4,7 @@ import { CreateOrderInput } from '../schemas/order.schema';
 import { findProductByIdOrSlug, deductStockInMemory } from './product.service';
 
 // In-memory store for newly created orders when running without DB
-const inMemoryOrders: any[] = [...fallbackOrders];
+export const inMemoryOrders: any[] = [...fallbackOrders];
 
 const generateOrderCode = (): string => {
   const randomNum = Math.floor(1000 + Math.random() * 9000);
@@ -273,6 +273,82 @@ export const getOrderByCodeAndPhone = async (orderCode: string, phone: string) =
 
   const res = await pool.query(query, [normalizedCode, phone.trim()]);
   return res.rows[0] || null;
+};
+
+export const getOrderByCode = async (orderCode: string) => {
+  const normalizedCode = orderCode.startsWith('#') ? orderCode : `#${orderCode}`;
+  const isDbConnected = await checkDbConnection();
+
+  if (!isDbConnected) {
+    const order = inMemoryOrders.find(
+      (o) => o.orderCode.toLowerCase() === normalizedCode.toLowerCase()
+    );
+    return order || null;
+  }
+
+  const query = `
+    SELECT 
+      o.id, o.order_code as "orderCode", o.customer_name as "customerName",
+      o.phone, o.address, o.note, o.total_amount as "totalAmount",
+      o.payment_method as "paymentMethod", o.status, o.tracking_info as "trackingInfo",
+      o.created_at as "createdAt",
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'productId', oi.product_id,
+            'productName', oi.product_name,
+            'quantity', oi.quantity,
+            'unitPrice', oi.unit_price
+          )
+        ) FILTER (WHERE oi.id IS NOT NULL), '[]'::json
+      ) as items
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    WHERE LOWER(o.order_code) = LOWER($1)
+    GROUP BY o.id
+  `;
+
+  const res = await pool.query(query, [normalizedCode]);
+  return res.rows[0] || null;
+};
+
+export const getOrdersByPhone = async (phone: string) => {
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  if (!cleanPhone || cleanPhone.length < 7) return [];
+
+  const isDbConnected = await checkDbConnection();
+  if (!isDbConnected) {
+    return inMemoryOrders.filter((o) => {
+      const p = (o.phone || '').replace(/[^0-9]/g, '');
+      return p.includes(cleanPhone) || cleanPhone.includes(p);
+    });
+  }
+
+  const query = `
+    SELECT 
+      o.id, o.order_code as "orderCode", o.customer_name as "customerName",
+      o.phone, o.address, o.note, o.total_amount as "totalAmount",
+      o.payment_method as "paymentMethod", o.status, o.tracking_info as "trackingInfo",
+      o.created_at as "createdAt",
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'productId', oi.product_id,
+            'productName', oi.product_name,
+            'quantity', oi.quantity,
+            'unitPrice', oi.unit_price
+          )
+        ) FILTER (WHERE oi.id IS NOT NULL), '[]'::json
+      ) as items
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.phone LIKE $1
+    GROUP BY o.id
+    ORDER BY o.created_at DESC
+  `;
+
+  const res = await pool.query(query, [`%${cleanPhone}%`]);
+  return res.rows;
 };
 
 export const updateOrderStatus = async (

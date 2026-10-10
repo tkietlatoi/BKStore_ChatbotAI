@@ -346,6 +346,41 @@ const tests: TestCase[] = [
       }
     },
   },
+  {
+    name: '16. Get All Brands (/api/brands)',
+    run: async () => {
+      const res = await fetch(`${BASE_URL}/api/brands`);
+      if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}`);
+      const body = (await res.json()) as any;
+      if (!body.success || !Array.isArray(body.data) || body.data.length < 7) {
+        throw new Error(`Expected at least 7 brands, got ${body.data?.length}`);
+      }
+      const slugs = body.data.map((b: any) => b.slug);
+      if (!slugs.includes('apple') || !slugs.includes('dell') || !slugs.includes('asus')) {
+        throw new Error('Expected core brands (apple, dell, asus) in brand list');
+      }
+    },
+  },
+  {
+    name: '17. Get Brand by Slug (/api/brands/apple)',
+    run: async () => {
+      const res = await fetch(`${BASE_URL}/api/brands/apple`);
+      if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}`);
+      const body = (await res.json()) as any;
+      if (!body.success || !body.data || body.data.name !== 'Apple') {
+        throw new Error(`Expected brand name 'Apple', got ${body.data?.name}`);
+      }
+    },
+  },
+  {
+    name: '18. Get Brand by Non-existent Slug (/api/brands/non-existent-xyz)',
+    run: async () => {
+      const res = await fetch(`${BASE_URL}/api/brands/non-existent-xyz`);
+      if (res.status !== 404) {
+        throw new Error(`Expected status 404 for invalid brand slug, got ${res.status}`);
+      }
+    },
+  },
 ];
 
 const runAllTests = async () => {

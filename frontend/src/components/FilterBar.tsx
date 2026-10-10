@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { Laptop, Smartphone, Headphones, LayoutGrid, ArrowUpDown, Filter } from 'lucide-react';
 import { Category } from '@/types';
 
@@ -109,6 +110,16 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 </option>
               ))}
             </select>
+            {selectedBrand !== 'all' && (
+              <Link
+                href={`/brands/${encodeURIComponent(selectedBrand.toLowerCase())}`}
+                className="ml-1 pl-2 border-l border-slate-200 text-blue-600 hover:text-blue-700 text-xs font-semibold flex items-center gap-0.5 transition-colors"
+                title={`Mở trang riêng thương hiệu ${selectedBrand}`}
+              >
+                <span>Trang riêng</span>
+                <span className="text-[10px]">→</span>
+              </Link>
+            )}
           </div>
         </div>
 

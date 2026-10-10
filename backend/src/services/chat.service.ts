@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import { ragService, SearchResult } from './rag.service';
+import { products as seedProducts } from '../db/seedData';
 import {
   checkInventory,
   trackOrder,
@@ -20,8 +21,15 @@ dotenv.config();
 const apiKey = process.env.GEMINI_API_KEY || '';
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
-// Danh sách các model ưu tiên thử nghiệm (fallback nếu gặp 503 tạm thời)
-const CANDIDATE_MODELS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-pro-latest'];
+// Danh sách các model ưu tiên thử nghiệm (fallback nếu gặp 503/429 tạm thời)
+const CANDIDATE_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-3.5-flash',
+  'gemini-flash-latest',
+  'gemini-3.8-flash',
+];
 
 export interface ChatHistoryItem {
   role: 'user' | 'assistant' | 'model';
@@ -58,7 +66,59 @@ NGUYÊN TẮC BẮT BUỘC:
 2. TƯ VẤN CẤU HÌNH: Giải thích vì sao cấu hình đó phù hợp với nhu cầu của khách (ví dụ: sinh viên kinh tế cần mỏng nhẹ pin trâu; AI/Data Science cần 32GB RAM + GPU CUDA; gaming cần tần số quét cao).
 3. ĐƠN HÀNG: Thông báo rõ mã đơn, trạng thái hiện tại, lộ trình vận chuyển và số tiền.
 4. TỒN KHO: Nói rõ chi nhánh nào còn bao nhiêu máy, địa chỉ showroom để khách ghé trải nghiệm.
-5. GỢI Ý HÀNH ĐỘNG: Ở cuối câu trả lời, hãy gợi ý nhẹ nhàng bước tiếp theo (ví dụ: đặt giữ máy, ghé chi nhánh xem thực tế, hoặc liên hệ hotline 1800 6868 miễn phí).`;
+5. GỢI Ý HÀNH ĐỘNG: Ở cuối câu trả lời, hãy gợi ý nhẹ nhàng bước tiếp theo (ví dụ: đặt giữ máy, ghé chi nhánh xem thực tế, hoặc liên hệ hotline 1800 6868 miễn phí).
+6. TRÌNH BÀY TỰ NHIÊN: Khi trích xuất tài liệu từ RAG, luôn diễn giải thành văn phong tư vấn ân cần, tự nhiên, dễ hiểu.
+7. TUYỆT ĐỐI KHÔNG XUẤT RA DỮ LIỆU NỘI BỘ HAY CHECKLIST:
+- CHỈ xuất ra đúng nội dung câu trả lời tư vấn gửi đến khách hàng.
+- Tuyệt đối KHÔNG in ra các nhãn kỹ thuật nội bộ như "[Tài liệu: ...]", "[Mục: ...]", "Độ khớp: ...%", hoặc các đoạn code/tag debug thô.
+- Tuyệt đối KHÔNG in ra bất kỳ dòng suy nghĩ, checklist, tự kiểm tra, self-reflection (như "technical metadata printed", "Checked", "Suggest next step at end: Checked", "Verified",...).`;
+
+/**
+ * Làm sạch câu trả lời của AI: Loại bỏ triệt để các nhãn kỹ thuật, nhãn debug,
+ * và các checklist tự kiểm tra (CoT/self-reflection leakage) bị rò rỉ.
+ */
+export function sanitizeChatReply(text: string): string {
+  if (!text) return '';
+
+  let cleaned = text;
+
+  // 1. Xóa các khối checklist / metadata dạng đoạn văn
+  cleaned = cleaned.replace(
+    /(?:^|\n)[\/\*_\s]*(?:technical\s*metadata|metadata\s*printed|self-check|checklist|internal\s*JSON\s*tags)[\s\S]*?(?=\n\n[A-ZÀ-Ỹ0-9]|$)/gi,
+    ''
+  );
+
+  // 2. Xóa các dòng đơn lẻ hoặc checklist bullet points
+  cleaned = cleaned.replace(/^.*(?:technical\s*metadata|suggest\s*next\s*step\s*at\s*end|checked\s*\(no|\(no\s*\[tài liệu|internal\s*JSON\s*tags).*$/gim, '');
+
+  // 3. Xóa các nhãn kỹ thuật nội bộ còn sót
+  cleaned = cleaned.replace(/\[Tài liệu:.*?\]/gi, '');
+  cleaned = cleaned.replace(/\[Mục:.*?\]/gi, '');
+  cleaned = cleaned.replace(/Độ khớp:\s*\d+(?:\.\d+)?%/gi, '');
+
+  // 4. Lọc từng dòng
+  const lines = cleaned.split('\n');
+  const filteredLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (
+      /^(?:\/|\*|\-)?\s*(?:technical\s*metadata|suggest\s*next\s*step|checked\b)/i.test(trimmed) ||
+      /\bchecked\s*\(/i.test(trimmed) ||
+      /internal\s*(?:JSON|tags)/i.test(trimmed)
+    ) {
+      continue;
+    }
+    filteredLines.push(line);
+  }
+
+  cleaned = filteredLines.join('\n');
+
+  // 5. Chuẩn hóa khoảng trắng & dòng trống
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+  return cleaned;
+}
 
 class ChatService {
   /**
@@ -71,22 +131,34 @@ class ChatService {
     const text = message.trim();
     const norm = normalizeText(text);
 
-    // 1. Kiểm tra ý định Tra cứu đơn hàng (#BK-xxxx hoặc BK-xxxx hoặc "đơn hàng")
-    const orderCodeMatch = text.match(/#?BK-?\d{4}/i) || text.match(/\b\d{4}\b/);
+    // 1. Kiểm tra ý định Tra cứu đơn hàng (#BK-xxxx hoặc SĐT hoặc từ khóa đơn hàng)
     const isOrderKeyword =
       norm.includes('don hang') ||
       norm.includes('tra cuu') ||
       norm.includes('van don') ||
       norm.includes('kiem tra don') ||
       norm.includes('giao den dau') ||
-      norm.includes('tinh trang don');
+      norm.includes('tinh trang don') ||
+      norm.includes('trang thai don') ||
+      norm.includes('shipper') ||
+      norm.includes('da giao chua') ||
+      norm.includes('ma van don');
 
-    if (orderCodeMatch && (isOrderKeyword || text.toUpperCase().includes('BK-'))) {
-      const code = orderCodeMatch[0].replace(/[^0-9]/g, '');
+    // Tìm mã đơn hàng (#BK-xxxx, BK-xxxx, BKxxxx, hoặc 4 chữ số khi có từ khóa đơn hàng)
+    const orderCodeMatch =
+      text.match(/#?BK[-_ ]?\d{3,6}/i) ||
+      (isOrderKeyword ? text.match(/\b\d{4}\b/) : null);
+
+    // Tìm số điện thoại (10 chữ số bắt đầu bằng 0 hoặc +84)
+    const phoneMatch = text.match(/(?:\+?84|0)(?:\d{9}|\d{8})\b/);
+
+    if (orderCodeMatch || (isOrderKeyword && phoneMatch)) {
+      const code = orderCodeMatch ? orderCodeMatch[0].replace(/[^0-9]/g, '') : undefined;
       return {
         intent: 'track_order',
         extracted: {
-          orderCode: `#BK-${code}`,
+          orderCode: code ? `#BK-${code}` : undefined,
+          phone: phoneMatch ? phoneMatch[0] : undefined,
         },
       };
     }
@@ -191,20 +263,34 @@ class ChatService {
       };
     }
 
-    // 4. Kiểm tra ý định hỏi thông số chi tiết của máy
-    const isSpecKeyword =
+    // 4. Kiểm tra ý định hỏi thông số chi tiết hoặc tư vấn về máy cụ thể
+    const isConsultProductKeyword =
       norm.includes('thong so') ||
       norm.includes('cau hinh') ||
       norm.includes('ram') ||
       norm.includes('chip') ||
       norm.includes('cpu') ||
-      norm.includes('man hinh');
+      norm.includes('man hinh') ||
+      norm.includes('tu van cho toi ve san pham') ||
+      norm.includes('ve san pham') ||
+      norm.includes('may nay');
 
-    if (isSpecKeyword) {
+    if (isConsultProductKeyword) {
+      // Tìm sản phẩm trong danh mục
+      const matched = seedProducts.find((p) => {
+        const pNameNorm = normalizeText(p.name);
+        const pSlugNorm = normalizeText(p.slug);
+        return (
+          norm.includes(pNameNorm) ||
+          norm.includes(pSlugNorm) ||
+          pNameNorm.split(' ').slice(0, 3).every((w) => norm.includes(w))
+        );
+      });
+
       return {
         intent: 'product_details',
         extracted: {
-          productIdentifier: text,
+          productIdentifier: matched ? matched.slug : text,
         },
       };
     }
@@ -215,7 +301,10 @@ class ChatService {
   /**
    * Gọi mô hình Gemini với cơ chế luân chuyển model (Model Fallback) khi gặp 503
    */
-  private async generateWithFallback(prompt: string): Promise<{ text: string; modelName: string }> {
+  private async generateWithFallback(
+    prompt: string,
+    systemInstructionText?: string
+  ): Promise<{ text: string; modelName: string }> {
     if (!genAI) {
       throw new Error('Chưa cấu hình GEMINI_API_KEY trong file .env');
     }
@@ -224,13 +313,18 @@ class ChatService {
 
     for (const modelName of CANDIDATE_MODELS) {
       try {
-        const model = genAI.getGenerativeModel({
+        const modelParams: any = {
           model: modelName,
           generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 1200,
+            temperature: 0.3,
+            maxOutputTokens: 2048,
           },
-        });
+        };
+        if (systemInstructionText) {
+          modelParams.systemInstruction = systemInstructionText;
+        }
+
+        const model = genAI.getGenerativeModel(modelParams);
         const res = await model.generateContent(prompt);
         const text = res.response.text();
         if (text && text.trim().length > 0) {
@@ -302,17 +396,22 @@ class ChatService {
 
     // 2. Tra cứu RAG ngữ cảnh tri thức (Chính sách, Cẩm nang tư vấn)
     let ragContextText = '';
+    let matchedRagChunks: SearchResult[] = [];
     try {
       const ragResults = await ragService.search(message, 3);
-      const relevantChunks = ragResults.filter((r) => r.score >= 0.2);
+      matchedRagChunks = ragResults.filter((r) => r.score >= 0.2);
 
-      if (relevantChunks.length > 0) {
+      if (matchedRagChunks.length > 0) {
         const contextParts: string[] = [];
-        for (const res of relevantChunks) {
+        for (const res of matchedRagChunks) {
           const docTitle = res.chunk.documentTitle || res.chunk.category;
           const secTitle = res.chunk.sectionTitle ? ` - ${res.chunk.sectionTitle}` : '';
           citations.push(`${docTitle}${secTitle}`);
-          contextParts.push(`--- [Tài liệu: ${docTitle}${secTitle} (Độ khớp: ${(res.score * 100).toFixed(0)}%)] ---\n${res.chunk.content}`);
+          const cleanChunkText = res.chunk.content
+            .replace(/\[Tài liệu:.*?\]/g, '')
+            .replace(/\[Mục:.*?\]/g, '')
+            .trim();
+          contextParts.push(`Tài liệu tham khảo (${docTitle}${secTitle}):\n${cleanChunkText}`);
         }
         ragContextText = contextParts.join('\n\n');
       }
@@ -329,21 +428,16 @@ class ChatService {
         .join('\n');
     }
 
-    const systemPromptWithData = `${SYSTEM_INSTRUCTION}
+    const userPromptWithData = `${ragContextText ? `=== NGỮ CẢNH TRI THỨC CHUẨN XÁC TỪ BK-STORE (RAG) ===\n${ragContextText}\n\n` : ''}${toolResultData ? `=== DỮ LIỆU THỜI GIAN THỰC TỪ HỆ THỐNG / DATABASE (LIVE DATA) ===\nCông cụ: ${toolUsed}\nKết quả: ${JSON.stringify(toolResultData, null, 2)}\n\n` : ''}${conversationHistoryText ? `=== LỊCH SỬ HỘI THOẠI GẦN ĐÂY ===\n${conversationHistoryText}\n\n` : ''}Khách hàng vừa hỏi: "${message}"
 
-${ragContextText ? `=== NGỮ CẢNH TRI THỨC CHUẨN XÁC TỪ BK-STORE (RAG) ===\n${ragContextText}\n` : ''}
-${toolResultData ? `=== DỮ LIỆU THỜI GIAN THỰC TỪ HỆ THỐNG / DATABASE (LIVE DATA) ===\nCông cụ: ${toolUsed}\nKết quả: ${JSON.stringify(toolResultData, null, 2)}\n` : ''}
-${conversationHistoryText ? `=== LỊCH SỬ HỘI THOẠI GẦN ĐÂY ===\n${conversationHistoryText}\n` : ''}
-Khách hàng vừa hỏi: "${message}"
-
-Hãy đưa ra câu trả lời hoàn chỉnh, ân cần, súc tích và chính xác nhất cho khách hàng:`;
+Hãy đưa ra câu trả lời trực tiếp cho khách hàng (chỉ xuất lời thoại tư vấn, tuyệt đối không in bất kỳ dòng checklist hoặc siêu dữ liệu tự kiểm tra nào):`;
 
     // 4. Gọi Gemini để tổng hợp câu trả lời
     let replyText = '';
     let usedModel = 'gemini-3.8-flash';
 
     try {
-      const genResult = await this.generateWithFallback(systemPromptWithData);
+      const genResult = await this.generateWithFallback(userPromptWithData, SYSTEM_INSTRUCTION);
       replyText = genResult.text;
       usedModel = genResult.modelName;
     } catch (aiErr: any) {
@@ -360,26 +454,56 @@ Hãy đưa ra câu trả lời hoàn chỉnh, ân cần, súc tích và chính x
           }
           replyText += `\n\nAnh/chị có muốn em giữ máy trước tại chi nhánh gần mình không ạ?`;
         } else if (toolUsed === 'trackOrder') {
-          replyText = `Dạ chào anh/chị! BK-Bot xin gửi thông tin chi tiết đơn hàng:\n\n• **Mã đơn:** ${toolResultData.orderCode}\n• **Trạng thái:** ${toolResultData.statusLabel}\n• **Tiến trình:** ${toolResultData.trackingInfo}\n• **Tổng thanh toán:** ${toolResultData.formattedTotal}\n\nĐơn hàng đang được BK-Store xử lý đúng tiến độ ạ!`;
+          if (toolResultData.found) {
+            replyText = `Dạ chào anh/chị! BK-Bot xin gửi thông tin chi tiết đơn hàng:\n\n• **Mã đơn:** ${toolResultData.orderCode}\n• **Khách hàng:** ${toolResultData.customerName || 'Quý khách'}\n• **Trạng thái:** ${toolResultData.statusLabel}\n• **Tiến trình:** ${toolResultData.trackingInfo}\n• **Tổng thanh toán:** ${toolResultData.formattedTotal}\n\nĐơn hàng đang được BK-Store xử lý đúng tiến độ ạ!`;
+          } else {
+            replyText = `Dạ chào anh/chị! ${toolResultData.message}`;
+          }
         } else if (toolUsed === 'filterProducts') {
           replyText = `Dạ chào anh/chị! Dưới đây là các sản phẩm phù hợp nhất với tầm giá và nhu cầu của mình tại BK-Store:\n\n`;
           replyText += toolResultData.products
             .map((p: any) => `• **${p.name}** — Giá ưu đãi: **${p.formattedPrice}**\n  *Cấu hình:* ${p.specsSummary}`)
             .join('\n\n');
           replyText += `\n\nTất cả sản phẩm đều là hàng chính hãng 100%, bảo hành 1 đổi 1 trong 30 ngày ạ!`;
+        } else if (toolUsed === 'getProductDetails' && toolResultData.product) {
+          const p = toolResultData.product;
+          replyText = `Dạ chào anh/chị! Dưới đây là thông số kỹ thuật chi tiết và đánh giá về **${p.name}** tại BK-Store:\n\n`;
+          replyText += `• **Thương hiệu:** ${p.brand}\n`;
+          replyText += `• **Giá niêm yết ưu đãi:** **${p.formattedPrice}**\n`;
+          if (p.specs && typeof p.specs === 'object') {
+            replyText += `• **Cấu hình nổi bật:**\n`;
+            replyText += Object.entries(p.specs).map(([k, v]) => `  - ${k.toUpperCase()}: ${v}`).join('\n') + '\n';
+          }
+          replyText += `• **Chính sách:** Hàng chính hãng 100%, bảo hành ${p.warrantyMonths} tháng, đặc quyền **1 đổi 1 trong 30 ngày** nếu có lỗi phần cứng.\n\n`;
+          replyText += `Mẫu máy này cực kỳ tối ưu cho các tác vụ làm việc và giải trí cao cấp. Anh/chị có muốn em kiểm tra tồn kho tại showroom gần mình nhất không ạ?`;
         } else {
           replyText = `Dạ, ${toolResultData.message || 'BK-Store luôn sẵn sàng phục vụ anh/chị!'}`;
         }
-      } else if (ragContextText) {
-        replyText = `Dạ chào anh/chị! Theo chính sách chính thức của BK-Store:\n\n${ragContextText.slice(0, 400)}...\n\nAnh/chị có thể liên hệ tổng đài miễn phí **1800 6868** nếu cần hỗ trợ thêm nhé!`;
+      } else if (matchedRagChunks && matchedRagChunks.length > 0) {
+        const topChunk = matchedRagChunks[0].chunk;
+        const cleanContent = topChunk.content
+          .replace(/\[Tài liệu:.*?\]/g, '')
+          .replace(/\[Mục:.*?\]/g, '')
+          .replace(/^#+\s+/gm, '')
+          .trim();
+
+        const paragraphs = cleanContent
+          .split('\n\n')
+          .filter((p) => p.trim().length > 0)
+          .slice(0, 3)
+          .join('\n\n');
+
+        replyText = `Dạ em chào anh/chị! Về chính sách chính thức của BK-Store, em xin phép thông tin chi tiết đến anh/chị như sau:\n\n${paragraphs}\n\nAnh/chị hoàn toàn yên tâm khi mua sắm tại BK-Store ạ! Nếu cần hỗ trợ thêm thông tin chi tiết, anh/chị có thể liên hệ ngay tổng đài miễn phí **1800 6868** nhé!`;
       } else {
         replyText = `Dạ em chào anh/chị! Em là **BK-Bot** - Trợ lý công nghệ của BK-Store. Em có thể hỗ trợ anh/chị tư vấn cấu hình laptop, điện thoại, kiểm tra tồn kho tại 3 chi nhánh hoặc tra cứu tiến trình đơn hàng. Anh/chị đang quan tâm đến sản phẩm nào ạ?`;
       }
       usedModel = 'smart-fallback';
     }
 
+    const cleanedReply = sanitizeChatReply(replyText);
+
     return {
-      reply: replyText,
+      reply: cleanedReply,
       citations: Array.from(new Set(citations)),
       cards: cardPayload,
       toolUsed,

@@ -36,6 +36,13 @@ export interface Category {
   description?: string;
 }
 
+export interface Brand {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+}
+
 export interface Branch {
   id: string;
   name: string;

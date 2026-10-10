@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import categoryRoutes from './category.routes';
+import brandRoutes from './brand.routes';
 import productRoutes from './product.routes';
 import orderRoutes from './order.routes';
 import branchRoutes from './branch.routes';
@@ -9,6 +10,7 @@ import chatRoutes from './chat.routes';
 const apiRouter = Router();
 
 apiRouter.use('/categories', categoryRoutes);
+apiRouter.use('/brands', brandRoutes);
 apiRouter.use('/products', productRoutes);
 apiRouter.use('/orders', orderRoutes);
 apiRouter.use('/branches', branchRoutes);

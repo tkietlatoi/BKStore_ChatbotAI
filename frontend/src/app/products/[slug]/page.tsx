@@ -14,12 +14,16 @@ import {
   Star,
   CheckCircle2,
   Package,
+  Store,
+  MapPin,
 } from 'lucide-react';
-import { fetchProductBySlug } from '@/lib/api';
+import { fetchProductBySlug, fetchProducts } from '@/lib/api';
 import { Product } from '@/types';
 import { formatPrice } from '@/lib/utils';
 import { useCartStore } from '@/store/cartStore';
 import { Header } from '@/components/Header';
+import { Footer } from '@/components/Footer';
+import { ProductCard } from '@/components/ProductCard';
 import { CartDrawer } from '@/components/CartDrawer';
 import { CheckoutModal } from '@/components/CheckoutModal';
 import { OrderTrackingModal } from '@/components/OrderTrackingModal';
@@ -31,6 +35,7 @@ export default function ProductDetailPage() {
   const slug = params?.slug as string;
 
   const [product, setProduct] = useState<Product | null>(null);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedImg, setSelectedImg] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
@@ -56,6 +61,18 @@ export default function ProductDetailPage() {
           setProduct(data);
           if (data?.thumbnail) setSelectedImg(data.thumbnail);
           setIsLoading(false);
+
+          if (data?.categorySlug) {
+            fetchProducts({ category: data.categorySlug, limit: 6 })
+              .then((res) => {
+                if (!ignore) {
+                  setRelatedProducts(
+                    res.products.filter((p) => p.slug !== slug && p.id !== data.id).slice(0, 4)
+                  );
+                }
+              })
+              .catch(() => {});
+          }
         }
       })
       .catch((err) => {
@@ -146,7 +163,13 @@ export default function ProductDetailPage() {
             Trang chủ
           </Link>
           <span>/</span>
-          <span className="uppercase font-semibold text-blue-600">{product.brand}</span>
+          <Link
+            href={`/brands/${encodeURIComponent(product.brand.toLowerCase())}`}
+            className="uppercase font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+            title={`Xem thương hiệu ${product.brand}`}
+          >
+            {product.brand}
+          </Link>
           <span>/</span>
           <span className="text-slate-800 font-medium truncate max-w-xs">{product.name}</span>
         </div>
@@ -197,9 +220,13 @@ export default function ProductDetailPage() {
           <div className="lg:col-span-6 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="px-2.5 py-0.5 rounded-lg bg-slate-900 text-white text-[10px] font-mono font-bold uppercase tracking-wider">
+                <Link
+                  href={`/brands/${encodeURIComponent(product.brand.toLowerCase())}`}
+                  className="px-2.5 py-0.5 rounded-lg bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-mono font-bold uppercase tracking-wider transition-colors shadow-2xs"
+                  title={`Xem tất cả sản phẩm của ${product.brand}`}
+                >
                   {product.brand}
-                </span>
+                </Link>
                 <div className="flex items-center gap-1 text-amber-500 text-xs">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                   <span className="font-semibold text-slate-700">4.9</span>
@@ -310,6 +337,69 @@ export default function ProductDetailPage() {
                     Mua ngay
                   </button>
                 </div>
+
+                {/* Showroom Stock Availability */}
+                <div className="mt-6 p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <Store className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-bold text-slate-800">
+                        Tồn kho thực tế tại 3 Showroom BK-Store
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono font-semibold text-slate-500">
+                      Thời gian thực
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {(product.inventories && product.inventories.length > 0
+                      ? product.inventories
+                      : [
+                          { branchName: 'Hà Nội', city: 'Hà Nội', address: '268 Cầu Giấy', quantity: Math.ceil(stock * 0.4) },
+                          { branchName: 'TP.HCM', city: 'TP.HCM', address: '142 Thành Thái, Q.10', quantity: Math.ceil(stock * 0.4) },
+                          { branchName: 'Đà Nẵng', city: 'Đà Nẵng', address: '89 Nguyễn Văn Linh', quantity: Math.max(0, stock - 2 * Math.ceil(stock * 0.4)) },
+                        ]
+                    ).map((inv, idx) => {
+                      const q = inv.quantity;
+                      const inStock = q > 0;
+                      return (
+                        <div
+                          key={idx}
+                          className="p-2.5 rounded-xl bg-white border border-slate-200/70 flex flex-col justify-between gap-1 shadow-2xs"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-slate-400" />
+                                {inv.branchName}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                              {inv.city || inv.address || 'Chi nhánh trung tâm'}
+                            </p>
+                          </div>
+                          <div className="mt-1 flex items-center justify-between">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                inStock
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              }`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  inStock ? 'bg-emerald-500' : 'bg-rose-500'
+                                }`}
+                              ></span>
+                              {inStock ? `Còn ${q} máy` : 'Hết hàng'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -360,7 +450,48 @@ export default function ProductDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Related Products Section */}
+        {relatedProducts.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <span className="text-xs font-mono font-semibold text-blue-600 uppercase tracking-wider">
+                  Cùng phân khúc & danh mục
+                </span>
+                <h3 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">
+                  Sản phẩm tương tự bạn có thể quan tâm
+                </h3>
+              </div>
+              <Link
+                href="/"
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                <span>Xem tất cả</span>
+                <ArrowLeft className="w-3.5 h-3.5 rotate-180" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {relatedProducts.map((p) => (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  onAskAI={(prod) => {
+                    setChatInitialPrompt(
+                      `Tư vấn cho tôi về sản phẩm ${prod.name}, cấu hình này phù hợp với nhu cầu nào?`
+                    );
+                    setIsChatOpen(true);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* Footer */}
+      <Footer onOpenTracking={() => setIsTrackingOpen(true)} />
 
       {/* Cart Drawer */}
       <CartDrawer

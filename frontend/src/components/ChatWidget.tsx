@@ -27,14 +27,33 @@ interface ChatWidgetProps {
   isOpen: boolean;
   onToggle: () => void;
   initialPrompt?: string;
-  onQuickView?: (product: Product) => void;
+}
+
+function cleanAssistantMessage(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/(?:^|\n)[\/\*_\s]*(?:technical\s*metadata|metadata\s*printed|self-check|checklist|internal\s*JSON\s*tags)[\s\S]*?(?=\n\n[A-ZÀ-Ỹ0-9]|$)/gi, '')
+    .replace(/^.*(?:technical\s*metadata|suggest\s*next\s*step\s*at\s*end|checked\s*\(no|\(no\s*\[tài liệu|internal\s*JSON\s*tags).*$/gim, '')
+    .replace(/\[Tài liệu:.*?\]/gi, '')
+    .replace(/\[Mục:.*?\]/gi, '')
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      return (
+        !/^(?:\/|\*|\-)?\s*(?:technical\s*metadata|suggest\s*next\s*step|checked\b)/i.test(trimmed) &&
+        !/\bchecked\s*\(/i.test(trimmed) &&
+        !/internal\s*(?:JSON|tags)/i.test(trimmed)
+      );
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export const ChatWidget: React.FC<ChatWidgetProps> = ({
   isOpen,
   onToggle,
   initialPrompt,
-  onQuickView,
 }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -84,38 +103,6 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
     }, 1500);
   };
 
-  const handleOpenQuickView = async (prod: any) => {
-    if (!onQuickView) return;
-
-    const baseProduct: Product = {
-      id: prod.id,
-      name: prod.name,
-      slug: prod.slug,
-      brand: prod.brand,
-      price: Number(prod.price),
-      originalPrice: prod.originalPrice ? Number(prod.originalPrice) : undefined,
-      thumbnail: prod.thumbnail,
-      images: prod.images && prod.images.length > 0 ? prod.images : [prod.thumbnail],
-      specs: prod.specs && typeof prod.specs === 'object' && Object.keys(prod.specs).length > 0 ? prod.specs : {},
-      description: prod.description || prod.specsSummary || '',
-      stock: prod.stockQuantity ?? prod.stock ?? 10,
-    };
-
-    if (Object.keys(baseProduct.specs).length === 0 || baseProduct.images.length <= 1) {
-      try {
-        const fullProd = await fetchProductBySlug(prod.slug || prod.id);
-        if (fullProd) {
-          onQuickView(fullProd);
-          return;
-        }
-      } catch (err) {
-        console.warn('Failed to fetch full product for quick view:', err);
-      }
-    }
-
-    onQuickView(baseProduct);
-  };
-
   const handleSendPrompt = React.useCallback(
     async (text: string) => {
       if (!text.trim() || isTyping) return;
@@ -146,7 +133,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
         const botMsg: ChatMessage = {
           id: `ast-${Date.now()}`,
           role: 'assistant',
-          content: responseData.reply,
+          content: cleanAssistantMessage(responseData.reply),
           cards: responseData.cards,
           citations: responseData.citations,
           toolUsed: responseData.toolUsed,
@@ -365,10 +352,10 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                       </div>
                       <div className="grid grid-cols-1 gap-2">
                         {msg.cards.data.map((prod: any) => (
-                          <div
+                          <Link
                             key={prod.id}
-                            onClick={() => handleOpenQuickView(prod)}
-                            className="bg-white border border-slate-200/90 rounded-xl p-2.5 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all flex gap-3 items-center cursor-pointer group"
+                            href={`/products/${prod.slug}`}
+                            className="bg-white border border-slate-200/90 rounded-xl p-2.5 shadow-xs hover:border-blue-400 hover:shadow-md transition-all flex gap-3 items-center group cursor-pointer"
                           >
                             <img
                               src={prod.thumbnail}
@@ -404,9 +391,14 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                                 )}
                               </div>
                             </div>
-                            <div className="flex flex-col gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-col gap-1 shrink-0">
                               <button
-                                onClick={(e) => handleAddToCart(e, prod)}
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleAddToCart(e, prod);
+                                }}
                                 className={`p-1.5 rounded-lg text-[10px] font-medium flex items-center justify-center transition-all ${
                                   addedItemIds[prod.id]
                                     ? 'bg-emerald-600 text-white'
@@ -420,15 +412,14 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
                                   <ShoppingBag className="w-3.5 h-3.5" />
                                 )}
                               </button>
-                              <button
-                                onClick={() => handleOpenQuickView(prod)}
-                                className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600 text-[10px] flex items-center justify-center transition-colors"
-                                title="Xem chi tiết nhanh"
+                              <span
+                                className="p-1.5 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-600 text-[10px] flex items-center justify-center transition-colors pointer-events-none"
+                                title="Xem chi tiết sản phẩm"
                               >
                                 <Eye className="w-3.5 h-3.5" />
-                              </button>
+                              </span>
                             </div>
-                          </div>
+                          </Link>
                         ))}
                       </div>
                     </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { ShieldCheck, Truck, Headphones, RotateCcw, Sparkles } from 'lucide-react';
 
 interface FooterProps {
@@ -138,8 +139,24 @@ export const Footer: React.FC<FooterProps> = ({ onOpenTracking }) => {
 
         </div>
 
+        {/* Brand Directory Strip */}
+        <div className="mt-8 pt-6 border-t border-slate-800/80 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+          <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
+            Hệ sinh thái thương hiệu:
+          </span>
+          {['Apple', 'Dell', 'Asus', 'Samsung', 'Sony', 'Keychron', 'Anker'].map((b) => (
+            <Link
+              key={b}
+              href={`/brands/${b.toLowerCase()}`}
+              className="text-slate-400 hover:text-cyan-400 transition-colors font-medium flex items-center gap-1"
+            >
+              <span>{b}</span>
+            </Link>
+          ))}
+        </div>
+
         {/* Bottom copyright */}
-        <div className="mt-12 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
+        <div className="mt-6 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
           <p>© 2026 BK-Store. Dự án nghiên cứu & ứng dụng AI Agent trong Thương mại điện tử.</p>
           <p className="font-mono">Engine: Next.js 16 • PostgreSQL PGVector • LangChain</p>
         </div>

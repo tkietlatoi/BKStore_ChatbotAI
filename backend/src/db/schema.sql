@@ -16,6 +16,17 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 1.1 BRANDS TABLE (Thương hiệu công nghệ chính hãng)
+CREATE TABLE IF NOT EXISTS brands (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL,
+    slug VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_brands_slug ON brands(slug);
+
 -- 2. PRODUCTS TABLE
 CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

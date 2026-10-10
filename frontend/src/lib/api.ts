@@ -1,6 +1,59 @@
-import { ApiResponse, Branch, BranchInventory, Category, CreateOrderPayload, Order, OrderStatus, Product } from '@/types';
+import { ApiResponse, Branch, BranchInventory, Brand, Category, CreateOrderPayload, Order, OrderStatus, Product } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+// Fallback seed brands
+export const FALLBACK_BRANDS: Brand[] = [
+  {
+    id: 'br1',
+    name: 'Apple',
+    slug: 'apple',
+    description:
+      'Thương hiệu công nghệ hàng đầu thế giới từ Mỹ. Nổi bật với hệ sinh thái MacBook, iPhone, iPad sang trọng, chip Apple Silicon hiệu năng mạnh mẽ, thời lượng pin bền bỉ và bảo hành chính hãng VN/A.',
+  },
+  {
+    id: 'br2',
+    name: 'Dell',
+    slug: 'dell',
+    description:
+      'Thương hiệu máy tính danh tiếng từ Hoa Kỳ, nổi bật với độ bền chuẩn quân đội, bàn phím gõ êm và màn hình viền siêu mỏng InfinityEdge trên dòng Dell XPS doanh nhân, Dell Inspiron và máy trạm Precision.',
+  },
+  {
+    id: 'br3',
+    name: 'ASUS',
+    slug: 'asus',
+    description:
+      'Thương hiệu công nghệ tiên phong từ Đài Loan, dẫn đầu với laptop gaming ASUS ROG Zephyrus tản nhiệt kim loại lỏng và laptop văn phòng cao cấp Zenbook màn hình Lumina OLED rực rỡ chuẩn điện ảnh.',
+  },
+  {
+    id: 'br4',
+    name: 'Samsung',
+    slug: 'samsung',
+    description:
+      'Tập đoàn công nghệ hàng đầu Hàn Quốc, dẫn đầu toàn cầu về màn hình Dynamic AMOLED 2X, thiết kế gập đột phá Galaxy Z Fold/Flip, camera 200MP và kỷ nguyên trí tuệ nhân tạo Galaxy AI.',
+  },
+  {
+    id: 'br5',
+    name: 'Sony',
+    slug: 'sony',
+    description:
+      'Biểu tượng âm thanh và hình ảnh Nhật Bản đỉnh cao. Dẫn đầu với tai nghe chống ồn chủ động ANC chuẩn phòng thu WH-1000XM5, âm thanh Hi-Res Audio không dây LDAC và màng loa sợi carbon cao cấp.',
+  },
+  {
+    id: 'br6',
+    name: 'Keychron',
+    slug: 'keychron',
+    description:
+      'Thương hiệu bàn phím cơ Custom cao cấp hàng đầu thế giới. Tối ưu hoàn hảo chuyển đổi giữa Mac và Windows, kết nối không dây đa thiết bị, mạch hotswap linh hoạt và tùy biến firmware QMK/VIA.',
+  },
+  {
+    id: 'br7',
+    name: 'Anker',
+    slug: 'anker',
+    description:
+      'Thương hiệu phụ kiện sạc số 1 thế giới từ Mỹ. Tiên phong công nghệ bán dẫn GaNPrime siêu nhỏ gọn công suất cao 65W-140W, sạc thông minh PowerIQ và cáp bọc dù siêu bền uốn gập hơn 20.000 lần.',
+  },
+];
 
 // Fallback seed categories
 export const FALLBACK_CATEGORIES: Category[] = [
@@ -313,6 +366,36 @@ export async function fetchCategories(): Promise<Category[]> {
     console.warn('[API] fetchCategories fallback to local seed:', error);
   }
   return FALLBACK_CATEGORIES;
+}
+
+export async function fetchBrands(): Promise<Brand[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/brands`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+      return json.data;
+    }
+  } catch (error) {
+    console.warn('[API] fetchBrands fallback to local seed:', error);
+  }
+  return FALLBACK_BRANDS;
+}
+
+export async function fetchBrandBySlug(slug: string): Promise<Brand | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/brands/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        return json.data;
+      }
+    }
+  } catch (error) {
+    console.warn('[API] fetchBrandBySlug fallback:', error);
+  }
+  const found = FALLBACK_BRANDS.find((b) => b.slug.toLowerCase() === slug.toLowerCase());
+  return found || null;
 }
 
 export async function fetchBranches(): Promise<Branch[]> {

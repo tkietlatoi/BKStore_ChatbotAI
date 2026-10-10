@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ShoppingCart, Eye, Sparkles } from 'lucide-react';
 import { Product } from '@/types';
 import { formatPrice } from '@/lib/utils';
@@ -8,15 +10,15 @@ import { useCartStore } from '@/store/cartStore';
 
 interface ProductCardProps {
   product: Product;
-  onQuickView: (product: Product) => void;
+  onQuickView?: (product: Product) => void;
   onAskAI?: (product: Product) => void;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
   product,
-  onQuickView,
   onAskAI,
 }) => {
+  const router = useRouter();
   const [isPopping, setIsPopping] = useState(false);
   const addItem = useCartStore((state) => state.addItem);
 
@@ -24,11 +26,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const isOutOfStock = stock <= 0;
 
   const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     if (isOutOfStock) return;
     addItem(product, 1);
     setIsPopping(true);
     setTimeout(() => setIsPopping(false), 700);
+  };
+
+  const handleBrandClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    router.push(`/brands/${encodeURIComponent(product.brand.toLowerCase())}`);
   };
 
   const discountPercent =
@@ -40,17 +49,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const specChips = Object.entries(product.specs || {}).slice(0, 3);
 
   return (
-    <div
-      onClick={() => onQuickView(product)}
-      className="group bg-white rounded-2xl border border-slate-200/80 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 flex flex-col overflow-hidden cursor-pointer relative"
+    <Link
+      href={`/products/${product.slug}`}
+      className="group bg-white rounded-2xl border border-slate-200/80 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 flex flex-col overflow-hidden cursor-pointer relative block"
     >
       {/* Top badges */}
-      <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between pointer-events-none">
-        <span className="px-2.5 py-1 text-[11px] font-mono font-bold tracking-wider uppercase bg-slate-900/80 backdrop-blur-xs text-white rounded-lg">
+      <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={handleBrandClick}
+          className="px-2.5 py-1 text-[11px] font-mono font-bold tracking-wider uppercase bg-slate-900/80 hover:bg-blue-600 backdrop-blur-xs text-white rounded-lg transition-all shadow-xs cursor-pointer active:scale-95 z-20"
+          title={`Xem tất cả sản phẩm của thương hiệu ${product.brand}`}
+        >
           {product.brand}
-        </span>
+        </button>
         {discountPercent > 0 && (
-          <span className="px-2 py-0.5 text-[11px] font-bold bg-rose-500 text-white rounded-md shadow-xs">
+          <span className="pointer-events-none px-2 py-0.5 text-[11px] font-bold bg-rose-500 text-white rounded-md shadow-xs">
             -{discountPercent}%
           </span>
         )}
@@ -67,17 +81,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           loading="lazy"
         />
 
-        {/* Quick View Overlay Button */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onQuickView(product);
-          }}
-          className="absolute inset-0 m-auto w-10 h-10 rounded-full bg-white/90 text-slate-800 shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-600 hover:text-white"
-          title="Xem nhanh thông số"
+        {/* Quick View Overlay Indicator */}
+        <span
+          className="absolute inset-0 m-auto w-10 h-10 rounded-full bg-white/90 text-slate-800 shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-600 hover:text-white pointer-events-none"
+          title="Xem chi tiết sản phẩm"
         >
           <Eye className="w-5 h-5" />
-        </button>
+        </span>
       </div>
 
       {/* Product Content */}
@@ -170,6 +180,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               <button
                 type="button"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   onAskAI?.(product);
                 }}
@@ -182,6 +193,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 };

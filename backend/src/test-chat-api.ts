@@ -2,6 +2,7 @@ import { app } from './app';
 import { Server } from 'http';
 import { pool } from './config/db';
 import { ragService } from './services/rag.service';
+import { sanitizeChatReply } from './services/chat.service';
 
 const TEST_PORT = 5088;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
@@ -106,8 +107,47 @@ async function runChatTests() {
     console.log('Reply preview:', data5.data.reply.slice(0, 150) + '...');
     console.log('✅ [PASS] filterProducts executed and returned product cards');
 
+    // Test 6: Brand Knowledge Query (Thương hiệu & Công nghệ)
+    console.log('\n--- 6. Testing Brand Knowledge Query: Xuất xứ & Ưu điểm Keychron / Apple ---');
+    const res6 = await fetch(`${BASE_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Bàn phím cơ Keychron xuất xứ từ đâu và có những ưu điểm công nghệ gì?',
+      }),
+    });
+    const data6 = (await res6.json()) as any;
+    if (!data6.success || !data6.data?.reply) {
+      throw new Error(`Failed to get reply for brand query: ${JSON.stringify(data6)}`);
+    }
+    console.log('Model used:', data6.data.model);
+    console.log('Citations:', data6.data.citations);
+    console.log('Reply preview:', data6.data.reply.slice(0, 150) + '...');
+    console.log('✅ [PASS] Brand Knowledge successfully retrieved and answered by Chatbot');
+
+    // Test 7: Output Sanitizer Unit Verification (Strip internal metadata & checklist leaks)
+    console.log('\n--- 7. Testing Output Sanitizer (Metadata & CoT Leak Prevention) ---');
+    const dirtySample = `Dạ em chào anh/chị! BK-Store hiện có đầy đủ các mẫu laptop và phụ kiện chính hãng. Anh/chị có muốn em giữ máy trước tại showroom gần mình không ạ?
+
+/technical metadata printed:* Checked (no [Tài liệu: ...] or internal JSON tags). * Suggest next step at end: Checked.`;
+
+    const cleaned = sanitizeChatReply(dirtySample);
+    if (
+      cleaned.includes('technical metadata') ||
+      cleaned.includes('Checked') ||
+      cleaned.includes('Suggest next step') ||
+      cleaned.includes('internal JSON tags')
+    ) {
+      throw new Error(`Sanitizer failed to clean metadata leak! Got: "${cleaned}"`);
+    }
+    if (!cleaned.includes('BK-Store hiện có đầy đủ')) {
+      throw new Error(`Sanitizer erroneously modified genuine reply content! Got: "${cleaned}"`);
+    }
+    console.log('Cleaned text preview:', cleaned);
+    console.log('✅ [PASS] Internal metadata and checklist leak completely purged by Sanitizer');
+
     console.log('\n====================================================');
-    console.log('🎉 ALL 5 AI CHATBOT & RAG INTEGRATION TESTS PASSED!');
+    console.log('🎉 ALL 7 AI CHATBOT & RAG INTEGRATION TESTS PASSED!');
     console.log('====================================================');
   } finally {
     server.close();

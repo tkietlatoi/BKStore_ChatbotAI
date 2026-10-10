@@ -2,6 +2,7 @@ import { SchemaType } from '@google/generative-ai';
 import { pool, checkDbConnection } from '../config/db';
 import { branches as fallbackBranches, products as seedProducts, sampleOrders } from '../db/seedData';
 import { getProducts, getProductBySlug, slugify } from './product.service';
+import { getOrderByCode, getOrdersByPhone } from './order.service';
 
 /**
  * Định dạng tiền tệ VNĐ chuẩn
@@ -227,99 +228,88 @@ const maskName = (name: string): string => {
 
 export const trackOrder = async (params: TrackOrderParams): Promise<OrderTrackResult> => {
   const { orderCode, phone } = params;
-  if (!orderCode || !orderCode.trim()) {
+
+  if ((!orderCode || !orderCode.trim()) && (!phone || !phone.trim())) {
     return {
       found: false,
-      message: 'Vui lòng cung cấp mã đơn hàng (ví dụ: #BK-1024 hoặc 1024) để tra cứu.',
+      message: 'Vui lòng cung cấp mã đơn hàng (ví dụ: #BK-1024 hoặc 1024) hoặc số điện thoại dùng khi đặt hàng để em kiểm tra tiến trình giao hàng giúp mình nhé.',
     };
   }
 
-  // Chuẩn hóa mã đơn hàng
-  let cleanCode = orderCode.trim();
-  if (!cleanCode.startsWith('#')) {
-    if (cleanCode.toUpperCase().startsWith('BK-')) {
-      cleanCode = `#${cleanCode.toUpperCase()}`;
-    } else {
-      cleanCode = `#BK-${cleanCode}`;
-    }
-  }
-
-  const isDbConnected = await checkDbConnection();
   let orderData: any = null;
 
-  if (isDbConnected) {
-    const query = `
-      SELECT 
-        o.id, o.order_code as "orderCode", o.customer_name as "customerName",
-        o.phone, o.address, o.note, o.total_amount as "totalAmount",
-        o.payment_method as "paymentMethod", o.status, o.tracking_info as "trackingInfo",
-        o.created_at as "createdAt",
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'productName', oi.product_name,
-              'quantity', oi.quantity,
-              'unitPrice', oi.unit_price
-            )
-          ) FILTER (WHERE oi.id IS NOT NULL), '[]'::json
-        ) as items
-      FROM orders o
-      LEFT JOIN order_items oi ON oi.order_id = o.id
-      WHERE LOWER(o.order_code) = LOWER($1)
-      GROUP BY o.id
-      LIMIT 1
-    `;
-    const res = await pool.query(query, [cleanCode]);
-    if (res.rows.length > 0) {
-      orderData = res.rows[0];
+  // 1. Tra cứu theo mã đơn hàng
+  if (orderCode && orderCode.trim()) {
+    let cleanCode = orderCode.trim();
+    if (!cleanCode.startsWith('#')) {
+      if (cleanCode.toUpperCase().startsWith('BK-')) {
+        cleanCode = `#${cleanCode.toUpperCase()}`;
+      } else {
+        cleanCode = `#BK-${cleanCode}`;
+      }
     }
-  }
 
-  // Nếu DB không có hoặc không kết nối, tìm trong sampleOrders
-  if (!orderData) {
-    orderData = sampleOrders.find(
-      (o) => o.orderCode.toLowerCase() === cleanCode.toLowerCase()
-    );
-    if (orderData && orderData.items) {
-      // Map item product slug to product name
-      orderData.items = orderData.items.map((it: any) => {
-        const prod = seedProducts.find((p) => p.slug === it.productSlug);
+    // Tra cứu qua order.service (truy vấn DB hoặc inMemoryOrders)
+    orderData = await getOrderByCode(cleanCode);
+
+    // Fallback qua sampleOrders nếu chưa có
+    if (!orderData) {
+      orderData = sampleOrders.find(
+        (o) => o.orderCode.toLowerCase() === cleanCode.toLowerCase()
+      );
+    }
+
+    // Nếu khách có nhập kèm số điện thoại, kiểm tra khớp
+    if (orderData && phone && phone.trim()) {
+      const cleanInputPhone = phone.replace(/[^0-9]/g, '');
+      const cleanOrderPhone = (orderData.phone || '').replace(/[^0-9]/g, '');
+      if (cleanInputPhone.length >= 4 && !cleanOrderPhone.endsWith(cleanInputPhone.slice(-4))) {
         return {
-          productName: prod ? prod.name : it.productSlug,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
+          found: false,
+          message: `Mã đơn hàng "${cleanCode}" tồn tại, nhưng số điện thoại bạn cung cấp không trùng khớp với số điện thoại nhận hàng. Vui lòng kiểm tra lại.`,
         };
-      });
+      }
+    }
+  }
+
+  // 2. Tra cứu theo số điện thoại nếu chưa tìm thấy qua mã đơn hoặc khách chỉ nhập số điện thoại
+  if (!orderData && phone && phone.trim()) {
+    const ordersByPhone = await getOrdersByPhone(phone);
+    if (ordersByPhone && ordersByPhone.length > 0) {
+      orderData = ordersByPhone[0]; // Lấy đơn hàng mới nhất
+    } else {
+      const cleanInputPhone = phone.replace(/[^0-9]/g, '');
+      orderData = sampleOrders.find((o) =>
+        (o.phone || '').replace(/[^0-9]/g, '').includes(cleanInputPhone)
+      );
     }
   }
 
   if (!orderData) {
+    const queryTerm = orderCode ? `mã "${orderCode}"` : `số điện thoại "${phone}"`;
     return {
       found: false,
-      message: `Không tìm thấy đơn hàng nào có mã "${cleanCode}". Bạn vui lòng kiểm tra lại mã đơn hàng trong email xác nhận hoặc tin nhắn SMS từ BK-Store.`,
+      message: `Không tìm thấy đơn hàng nào khớp với ${queryTerm}. Quý khách vui lòng kiểm tra lại mã đơn hàng trong email/tin nhắn xác nhận, hoặc kiểm tra lại số điện thoại đặt hàng nhé.`,
     };
   }
 
-  // Nếu khách có nhập kèm số điện thoại, kiểm tra khớp
-  if (phone && phone.trim()) {
-    const cleanInputPhone = phone.replace(/[^0-9]/g, '');
-    const cleanOrderPhone = (orderData.phone || '').replace(/[^0-9]/g, '');
-    if (cleanInputPhone.length >= 4 && !cleanOrderPhone.endsWith(cleanInputPhone.slice(-4))) {
-      return {
-        found: false,
-        message: `Mã đơn hàng "${cleanCode}" tồn tại, nhưng số điện thoại bạn cung cấp không trùng khớp với thông tin người nhận đơn. Vui lòng kiểm tra lại.`,
-      };
+  // Chuẩn hóa danh sách sản phẩm trong đơn
+  const items = Array.isArray(orderData.items) ? orderData.items : [];
+  const formattedItems = items.map((it: any) => {
+    let name = it.productName;
+    if (!name && it.productSlug) {
+      const prod = seedProducts.find((p) => p.slug === it.productSlug);
+      name = prod ? prod.name : it.productSlug;
     }
-  }
+    return {
+      productName: name || 'Sản phẩm công nghệ BK-Store',
+      quantity: Number(it.quantity) || 1,
+      unitPrice: Number(it.unitPrice) || 0,
+      formattedUnitPrice: formatVND(Number(it.unitPrice) || 0),
+    };
+  });
 
-  const formattedItems = (orderData.items || []).map((it: any) => ({
-    productName: it.productName || 'Sản phẩm công nghệ',
-    quantity: it.quantity,
-    unitPrice: Number(it.unitPrice),
-    formattedUnitPrice: formatVND(Number(it.unitPrice)),
-  }));
-
-  const total = Number(orderData.totalAmount);
+  const total = Number(orderData.totalAmount) || 0;
   const statusKey = (orderData.status || 'pending').toLowerCase();
   const statusLabel = ORDER_STATUS_LABELS[statusKey] || 'Đang xử lý';
 
@@ -328,13 +318,20 @@ export const trackOrder = async (params: TrackOrderParams): Promise<OrderTrackRe
     orderCode: orderData.orderCode,
     customerName: maskName(orderData.customerName),
     maskedPhone: maskPhone(orderData.phone),
-    deliveryAddress: orderData.address,
+    deliveryAddress: orderData.address || 'Giao hàng tận nơi',
     totalAmount: total,
     formattedTotal: formatVND(total),
-    paymentMethod: orderData.paymentMethod === 'COD' ? 'Thanh toán tiền mặt khi nhận hàng (COD)' : 'Chuyển khoản VietQR',
+    paymentMethod:
+      orderData.paymentMethod === 'COD'
+        ? 'Thanh toán tiền mặt khi nhận hàng (COD)'
+        : orderData.paymentMethod === 'QR_PAY'
+        ? 'Thanh toán chuyển khoản VietQR'
+        : orderData.paymentMethod || 'Thanh toán khi nhận hàng',
     status: statusKey,
     statusLabel,
-    trackingInfo: orderData.trackingInfo || 'Đơn hàng đang được điều phối giao nhận.',
+    trackingInfo:
+      orderData.trackingInfo ||
+      `Đơn hàng đang ở trạng thái "${statusLabel}". BK-Store đang xử lý đơn hàng theo đúng lộ trình.`,
     items: formattedItems,
     message: `Đơn hàng ${orderData.orderCode} hiện đang ở trạng thái: "${statusLabel}". ${orderData.trackingInfo || ''}`,
   };
@@ -435,6 +432,10 @@ export const filterProducts = async (params: FilterProductsParams): Promise<Prod
       formattedOriginalPrice: origPrice ? formatVND(origPrice) : undefined,
       discountPercent: discount,
       thumbnail: p.thumbnail,
+      images: p.images && p.images.length > 0 ? p.images : [p.thumbnail],
+      specs: p.specs || {},
+      description: p.description || '',
+      stock: p.stockQuantity ?? p.stock ?? 10,
       specsSummary: specsSummary || p.description?.slice(0, 100) || '',
       inStock: (p.stockQuantity ?? p.stock ?? 10) > 0,
     };
@@ -492,15 +493,38 @@ export const getProductDetails = async (productIdentifier: string): Promise<Prod
     return { found: false, message: 'Vui lòng cung cấp tên hoặc mã sản phẩm.' };
   }
 
+  const normId = normalizeText(productIdentifier);
+
   // Tìm theo slug trước
   let prod = await getProductBySlug(productIdentifier.trim().toLowerCase());
 
-  // Nếu không thấy, tìm theo tên gần đúng
+  // Nếu không thấy, tìm theo tên gần đúng 2 chiều hoặc phân tích từ khóa
   if (!prod) {
-    const normId = normalizeText(productIdentifier);
-    const found = seedProducts.find((p) => normalizeText(p.name).includes(normId) || normalizeText(p.slug).includes(normId));
+    const found = seedProducts.find((p) => {
+      const pNameNorm = normalizeText(p.name);
+      const pSlugNorm = normalizeText(p.slug);
+      return (
+        pNameNorm.includes(normId) ||
+        normId.includes(pNameNorm) ||
+        pSlugNorm.includes(normId) ||
+        normId.includes(pSlugNorm) ||
+        pNameNorm.split(' ').slice(0, 3).every((w) => normId.includes(w))
+      );
+    });
     if (found) {
       prod = await getProductBySlug(found.slug);
+    }
+  }
+
+  if (!prod) {
+    // Thử tìm theo brand + category
+    const foundByBrand = seedProducts.find((p) => {
+      const pBrand = normalizeText(p.brand);
+      const pNameWords = normalizeText(p.name).split(' ');
+      return normId.includes(pBrand) && pNameWords.some((w) => w.length > 3 && normId.includes(w));
+    });
+    if (foundByBrand) {
+      prod = await getProductBySlug(foundByBrand.slug);
     }
   }
 

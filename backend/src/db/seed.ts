@@ -1,5 +1,5 @@
 import { pool } from '../config/db';
-import { categories, branches, products, sampleOrders, sampleKnowledgePolicies } from './seedData';
+import { categories, brands, branches, products, sampleOrders, sampleKnowledgePolicies } from './seedData';
 
 export const seedDatabase = async () => {
   console.log('🌱 Starting Database Seeding...');
@@ -20,6 +20,19 @@ export const seedDatabase = async () => {
       );
     }
     console.log(`✅ Seeded ${categories.length} categories.`);
+
+    // 1.1 Seed Brands
+    console.log('🏷️ Seeding Brands...');
+    for (const b of brands) {
+      await client.query(
+        `INSERT INTO brands (id, name, slug, description)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (slug) DO UPDATE 
+         SET name = EXCLUDED.name, description = EXCLUDED.description`,
+        [b.id, b.name, b.slug, b.description]
+      );
+    }
+    console.log(`✅ Seeded ${brands.length} brands.`);
 
     // 2. Seed Branches
     console.log('🏢 Seeding Branches...');
