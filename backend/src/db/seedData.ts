@@ -517,8 +517,10 @@ export const sampleOrders = [
     items: [
       {
         productSlug: 'macbook-air-m3-13-16gb-512gb',
+        productName: 'Apple MacBook Air 13 M3 (16GB RAM / 512GB SSD)',
         quantity: 1,
         unitPrice: 31990000,
+        price: 31990000,
       },
     ],
   },
@@ -535,13 +537,17 @@ export const sampleOrders = [
     items: [
       {
         productSlug: 'iphone-16-pro-max-256gb',
+        productName: 'Apple iPhone 16 Pro Max 256GB Titan Tự Nhiên',
         quantity: 1,
         unitPrice: 34490000,
+        price: 34490000,
       },
       {
         productSlug: 'anker-prime-67w-gan-charger',
+        productName: 'Củ sạc nhanh Anker 735 GaNPrime 65W (3 Cổng)',
         quantity: 1,
         unitPrice: 990000,
+        price: 990000,
       },
     ],
   },
@@ -558,8 +564,10 @@ export const sampleOrders = [
     items: [
       {
         productSlug: 'logitech-mx-master-3s',
+        productName: 'Chuột Không Dây Logitech MX Master 3S',
         quantity: 1,
         unitPrice: 2090000,
+        price: 2090000,
       },
     ],
   },

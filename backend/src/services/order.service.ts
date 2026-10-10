@@ -39,6 +39,7 @@ export const createOrder = async (input: CreateOrderInput) => {
         productName: prod.name,
         quantity: item.quantity,
         unitPrice: prod.price,
+        price: prod.price,
       });
     }
 
@@ -246,7 +247,15 @@ export const getOrderByCodeAndPhone = async (orderCode: string, phone: string) =
         o.orderCode.toLowerCase() === normalizedCode.toLowerCase() &&
         o.phone.trim() === phone.trim()
     );
-    return order || null;
+    if (!order) return null;
+    return {
+      ...order,
+      items: (order.items || []).map((it: any) => ({
+        ...it,
+        price: it.price !== undefined ? it.price : (it.unitPrice !== undefined ? it.unitPrice : 0),
+        unitPrice: it.unitPrice !== undefined ? it.unitPrice : (it.price !== undefined ? it.price : 0),
+      })),
+    };
   }
 
   const query = `
@@ -261,7 +270,8 @@ export const getOrderByCodeAndPhone = async (orderCode: string, phone: string) =
             'productId', oi.product_id,
             'productName', oi.product_name,
             'quantity', oi.quantity,
-            'unitPrice', oi.unit_price
+            'unitPrice', oi.unit_price,
+            'price', oi.unit_price
           )
         ) FILTER (WHERE oi.id IS NOT NULL), '[]'::json
       ) as items
@@ -283,7 +293,15 @@ export const getOrderByCode = async (orderCode: string) => {
     const order = inMemoryOrders.find(
       (o) => o.orderCode.toLowerCase() === normalizedCode.toLowerCase()
     );
-    return order || null;
+    if (!order) return null;
+    return {
+      ...order,
+      items: (order.items || []).map((it: any) => ({
+        ...it,
+        price: it.price !== undefined ? it.price : (it.unitPrice !== undefined ? it.unitPrice : 0),
+        unitPrice: it.unitPrice !== undefined ? it.unitPrice : (it.price !== undefined ? it.price : 0),
+      })),
+    };
   }
 
   const query = `
@@ -298,7 +316,8 @@ export const getOrderByCode = async (orderCode: string) => {
             'productId', oi.product_id,
             'productName', oi.product_name,
             'quantity', oi.quantity,
-            'unitPrice', oi.unit_price
+            'unitPrice', oi.unit_price,
+            'price', oi.unit_price
           )
         ) FILTER (WHERE oi.id IS NOT NULL), '[]'::json
       ) as items

@@ -5,9 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatPrice(price: number): string {
+export function formatPrice(price?: number | null): string {
+  const num = typeof price === 'number' && !isNaN(price) ? price : 0;
   return new Intl.NumberFormat("vi-VN", {
     style: "currency",
     currency: "VND",
-  }).format(price);
+  }).format(num);
 }

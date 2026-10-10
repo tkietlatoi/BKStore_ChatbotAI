@@ -254,17 +254,29 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                   Danh sách sản phẩm trong đơn:
                 </h5>
                 <div className="divide-y divide-slate-100 text-xs">
-                  {orderData.items.map((item, idx) => (
-                    <div key={idx} className="py-2 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-slate-500">x{item.quantity}</span>
-                        <span className="font-semibold text-slate-800">{item.productName || item.productId}</span>
+                  {orderData.items.map((item, idx) => {
+                    const itemUnitPrice = Number(item.unitPrice ?? item.price ?? 0);
+                    const itemQty = Number(item.quantity ?? 1);
+                    const itemTotalPrice = itemUnitPrice * itemQty;
+                    const displayName =
+                      item.productName || item.productSlug || item.productId || 'Thiết bị công nghệ';
+
+                    return (
+                      <div key={idx} className="py-2.5 flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
+                            x{itemQty}
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            {displayName}
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-blue-700">
+                          {formatPrice(itemTotalPrice)}
+                        </span>
                       </div>
-                      <span className="font-mono font-bold text-blue-700">
-                        {formatPrice(item.price * item.quantity)}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

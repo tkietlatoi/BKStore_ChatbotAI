@@ -58,10 +58,12 @@ export interface CartItem {
 
 export interface OrderItem {
   id?: string;
-  productId: string;
+  productId?: string;
+  productSlug?: string;
   productName?: string;
   productThumbnail?: string;
-  price: number;
+  price?: number;
+  unitPrice?: number;
   quantity: number;
 }
 

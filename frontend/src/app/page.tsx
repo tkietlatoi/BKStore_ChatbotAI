@@ -368,16 +368,13 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setSelectedCategory('laptop');
-                      handleExploreClick();
-                    }}
+                  <Link
+                    href="/categories/laptop"
                     className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50/80 hover:bg-blue-100/80 px-4 py-2 rounded-xl transition-all self-start sm:self-auto"
                   >
                     <span>Xem tất cả Laptop ({laptopCount})</span>
                     <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                  </Link>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -406,16 +403,13 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setSelectedCategory('smartphone');
-                      handleExploreClick();
-                    }}
+                  <Link
+                    href="/categories/smartphone"
                     className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100/80 px-4 py-2 rounded-xl transition-all self-start sm:self-auto"
                   >
                     <span>Xem tất cả Điện thoại ({smartphoneCount})</span>
                     <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                  </Link>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -444,16 +438,13 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setSelectedCategory('accessory');
-                      handleExploreClick();
-                    }}
+                  <Link
+                    href="/categories/accessory"
                     className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100/80 px-4 py-2 rounded-xl transition-all self-start sm:self-auto"
                   >
                     <span>Xem tất cả Phụ kiện ({accessoryCount})</span>
                     <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                  </Link>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
